@@ -1,0 +1,292 @@
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import test from 'node:test';
+import vm from 'node:vm';
+
+const adapterSource = readFileSync(
+  new URL('../../src/Web/fx-adapter.js', import.meta.url),
+  'utf8',
+);
+
+function createHarness(options = {})
+{
+  const calls =
+  {
+    addEventListener: [],
+    destroy: 0,
+    messages: [],
+    pointerCancel: [],
+    pointerDown: [],
+    pointerMove: [],
+    pointerUp: [],
+    setPaused: [],
+    setThemeColor: [],
+    updateConfig: [],
+  };
+  const windowListeners = new Map();
+  const canvasListeners = new Map();
+
+  class FakeFx
+  {
+    constructor(config)
+    {
+      if (options.constructorError)
+      {
+        throw options.constructorError;
+      }
+
+      this.width = 800;
+      this.height = 600;
+      this.config = config;
+      this.canvas =
+      {
+        addEventListener(type, listener)
+        {
+          calls.addEventListener.push(type);
+          canvasListeners.set(type, listener);
+        },
+      };
+      FakeFx.instance = this;
+    }
+
+    destroy()
+    {
+      calls.destroy++;
+    }
+
+    getConfig()
+    {
+      return {
+        bloomBackend: this.config.bloomBackend,
+        resolvedBloomBackend: 'pending',
+      };
+    }
+
+    pointerCancel(pointerId)
+    {
+      calls.pointerCancel.push(pointerId);
+      return true;
+    }
+
+    pointerDown(input)
+    {
+      calls.pointerDown.push(input);
+      return true;
+    }
+
+    pointerMove(input)
+    {
+      calls.pointerMove.push(input);
+      return true;
+    }
+
+    pointerUp(pointerId)
+    {
+      calls.pointerUp.push(pointerId);
+      return true;
+    }
+
+    setPaused(paused, pauseOptions)
+    {
+      calls.setPaused.push({ paused, pauseOptions });
+    }
+
+    setThemeColor(color)
+    {
+      calls.setThemeColor.push(color);
+    }
+
+    updateConfig(config)
+    {
+      calls.updateConfig.push(config);
+      Object.assign(this.config, config);
+    }
+  }
+
+  const windowMock =
+  {
+    __basparkRendererGeneration: 'test-generation',
+    BAClickFX:
+    {
+      BAClickFX: FakeFx,
+      BLOOM_BACKEND_CHANGE_EVENT: 'baclickfxbackendchange',
+    },
+    chrome:
+    {
+      webview:
+      {
+        postMessage(message)
+        {
+          calls.messages.push(JSON.parse(message));
+        },
+      },
+    },
+    addEventListener(type, listener)
+    {
+      windowListeners.set(type, listener);
+    },
+  };
+  const context =
+  {
+    console:
+    {
+      error()
+      {
+      },
+      warn()
+      {
+      },
+    },
+    document:
+    {
+      readyState: 'complete',
+      addEventListener()
+      {
+        throw new Error('DOMContentLoaded listener is not expected for a complete document.');
+      },
+    },
+    window: windowMock,
+  };
+
+  vm.runInNewContext(adapterSource, context, { filename: 'fx-adapter.js' });
+
+  return {
+    calls,
+    canvasListeners,
+    fx: FakeFx.instance,
+    window: windowMock,
+    windowListeners,
+  };
+}
+
+test('initializes the vendored renderer in manual WebView2 mode', () =>
+{
+  const harness = createHarness();
+
+  assert.equal(harness.fx.config.inputSource, 'manual');
+  assert.equal(harness.fx.config.bloomBackend, 'webgl2');
+  assert.equal(harness.fx.config.isolatedCompositing, true);
+  assert.equal(harness.fx.config.maxDpr, 2);
+  assert.equal(harness.calls.messages.at(-1).type, 'ready');
+  assert.equal(harness.calls.messages.at(-1).generation, 'test-generation');
+  assert.deepEqual(
+    harness.calls.addEventListener,
+    ['baclickfxbackendchange'],
+  );
+});
+
+test('maps normalized host input and BASpark settings to BAClickFX', () =>
+{
+  const harness = createHarness();
+
+  harness.window.updateEffectSettings(1.5, 0.75, 1.2, 0.8);
+  const settings = harness.calls.updateConfig.at(-1);
+  assert.equal(settings.scale, 1);
+  assert.equal(settings.opacity, 0.75);
+  assert.equal(settings.trailTimeScale, 1.2);
+  assert.equal(settings.clickTimeScale, 0.8);
+
+  harness.window.updateColor('45,175,255');
+  assert.equal(harness.calls.setThemeColor.at(-1), '#2dafff');
+
+  harness.window.setInputContext('mouse', true);
+  assert.equal(harness.calls.updateConfig.at(-1).trailAlways, true);
+
+  harness.window.externalMove(0.25, 0.5);
+  assert.equal(harness.calls.pointerMove.at(-1).x, 200);
+  assert.equal(harness.calls.pointerMove.at(-1).y, 300);
+  assert.equal(harness.calls.pointerMove.at(-1).pointerType, 'mouse');
+
+  harness.window.externalBoom(0.5, 0.25);
+  assert.equal(harness.calls.pointerDown.at(-1).x, 400);
+  assert.equal(harness.calls.pointerDown.at(-1).y, 150);
+  assert.equal(harness.calls.pointerDown.at(-1).pointerId, 1);
+  assert.equal(harness.calls.pointerCancel.length, 1);
+
+  harness.window.externalUp();
+  assert.deepEqual(harness.calls.pointerUp, [1]);
+
+  harness.window.externalCancel();
+  assert.equal(harness.calls.pointerCancel.at(-1), 1);
+});
+
+test('keeps the current color when host configuration is invalid', () =>
+{
+  const harness = createHarness();
+  const colorCallCount = harness.calls.setThemeColor.length;
+  const errorMessageCount = harness.calls.messages.filter(
+    (message) => message.type === 'error',
+  ).length;
+
+  assert.equal(harness.window.updateColor('45,not-a-number,255'), false);
+  assert.equal(harness.calls.setThemeColor.length, colorCallCount);
+  assert.equal(
+    harness.calls.messages.filter((message) => message.type === 'error').length,
+    errorMessageCount,
+  );
+});
+
+test('disables always-trail for touch and blocks input while paused', () =>
+{
+  const harness = createHarness();
+
+  harness.window.setInputContext('touch', true);
+  assert.equal(harness.calls.updateConfig.at(-1).trailAlways, false);
+
+  harness.window.externalBoom(0.1, 0.2);
+  assert.equal(harness.calls.pointerDown.at(-1).pointerType, 'touch');
+
+  harness.window.setRenderingPaused(true);
+  assert.equal(harness.calls.setPaused.at(-1).paused, true);
+  assert.equal(harness.calls.setPaused.at(-1).pauseOptions.clear, true);
+
+  const downCount = harness.calls.pointerDown.length;
+  assert.equal(harness.window.externalBoom(0.3, 0.4), false);
+  assert.equal(harness.calls.pointerDown.length, downCount);
+
+  harness.window.setRenderingPaused(false);
+  assert.equal(harness.calls.setPaused.at(-1).paused, false);
+  assert.equal(harness.calls.setPaused.at(-1).pauseOptions, undefined);
+});
+
+test('changes a software Bloom fallback to the bounded native backend', () =>
+{
+  const harness = createHarness();
+  const listener = harness.canvasListeners.get('baclickfxbackendchange');
+
+  listener(
+    {
+      detail:
+      {
+        requestedBloomBackend: 'webgl2',
+        resolvedBloomBackend: 'software',
+      },
+    },
+  );
+
+  assert.equal(harness.calls.messages.at(-1).type, 'backend');
+  assert.equal(harness.calls.messages.at(-1).resolvedBloomBackend, 'software');
+  assert.equal(harness.calls.updateConfig.at(-1).bloomBackend, 'native');
+});
+
+test('reports initialization failure without announcing readiness', () =>
+{
+  const harness = createHarness(
+    {
+      constructorError: new Error('unsupported runtime'),
+    },
+  );
+
+  assert.equal(harness.calls.messages.some((message) => message.type === 'ready'), false);
+  assert.equal(harness.calls.messages.at(-1).type, 'error');
+  assert.equal(harness.calls.messages.at(-1).phase, 'initialize');
+});
+
+test('destroys renderer-owned resources before the document unloads', () =>
+{
+  const harness = createHarness();
+
+  harness.windowListeners.get('beforeunload')();
+
+  assert.equal(harness.calls.destroy, 1);
+});

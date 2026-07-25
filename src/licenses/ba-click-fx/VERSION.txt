@@ -1,0 +1,5 @@
+Package: ba-click-fx
+Version: v1.2.10
+Commit: 657c70b1a9ca4d1afd549e8925e38634f07fbe92
+Artifact: dist/ba-click-fx.iife.js
+SHA256: F3455E66DC85C8C84C0737E8D2B5AF740546344C50F694A2A89A9201E891913F
