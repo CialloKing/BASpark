@@ -172,6 +172,7 @@ test('initializes the vendored renderer in manual WebView2 mode', () =>
   assert.equal(harness.fx.config.inputSource, 'manual');
   assert.equal(harness.fx.config.bloomBackend, 'webgl2');
   assert.equal(harness.fx.config.isolatedCompositing, true);
+  assert.equal(harness.fx.config.lightBackgroundContrastAlpha, 0.35);
   assert.equal(harness.fx.config.maxDpr, 2);
   assert.equal(harness.calls.messages.at(-1).type, 'ready');
   assert.equal(harness.calls.messages.at(-1).generation, 'test-generation');

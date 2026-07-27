@@ -535,6 +535,8 @@
                     inputSource: 'manual',
                     bloomBackend: 'webgl2',
                     isolatedCompositing: true,
+                    // Preserve BASpark's light-desktop outline after v1.2.11 changed the default.
+                    lightBackgroundContrastAlpha: 0.35,
                     maxDpr: 2,
                 });
 
