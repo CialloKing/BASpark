@@ -149,6 +149,16 @@
             });
     }
 
+    function cancelPointerImmediately()
+    {
+        const accepted = state.fx.pointerCancel(POINTER_ID);
+
+        // v1.2.11 preserves canceled trails; BASpark cancel marks an ownership boundary.
+        state.fx.clearTrail();
+        state.activePointerKind = null;
+        return accepted;
+    }
+
     function cancelActivePointer()
     {
         if (!state.fx || state.activePointerKind === null)
@@ -156,10 +166,7 @@
             return false;
         }
 
-        const accepted = state.fx.pointerCancel(POINTER_ID);
-
-        state.activePointerKind = null;
-        return accepted;
+        return cancelPointerImmediately();
     }
 
     function applyInputContext()
@@ -358,7 +365,7 @@
 
         return invokeFx('externalCancel', function ()
         {
-            const accepted = state.fx.pointerCancel(POINTER_ID);
+            const accepted = cancelPointerImmediately();
 
             resetInputCache();
             return accepted;

@@ -13,6 +13,7 @@ function createHarness(options = {})
   const calls =
   {
     addEventListener: [],
+    clearTrail: 0,
     destroy: 0,
     messages: [],
     pointerCancel: [],
@@ -52,6 +53,11 @@ function createHarness(options = {})
     destroy()
     {
       calls.destroy++;
+    }
+
+    clearTrail()
+    {
+      calls.clearTrail++;
     }
 
     getConfig()
@@ -202,12 +208,14 @@ test('maps normalized host input and BASpark settings to BAClickFX', () =>
   assert.equal(harness.calls.pointerDown.at(-1).y, 150);
   assert.equal(harness.calls.pointerDown.at(-1).pointerId, 1);
   assert.equal(harness.calls.pointerCancel.length, 1);
+  assert.equal(harness.calls.clearTrail, 1);
 
   harness.window.externalUp();
   assert.deepEqual(harness.calls.pointerUp, [1]);
 
   harness.window.externalCancel();
   assert.equal(harness.calls.pointerCancel.at(-1), 1);
+  assert.equal(harness.calls.clearTrail, 2);
 });
 
 test('keeps the current color when host configuration is invalid', () =>
