@@ -5,7 +5,7 @@ import test from 'node:test';
 import vm from 'node:vm';
 
 const expectedSha256 =
-  'F3455E66DC85C8C84C0737E8D2B5AF740546344C50F694A2A89A9201E891913F';
+  '6FDD5849C76354BDAF64C06DD4A9ED0F8ED0BBBF8D42E58DDDC7789E05271B64';
 const vendorPath = new URL(
   '../../src/Web/vendor/ba-click-fx.iife.js',
   import.meta.url,
@@ -13,7 +13,7 @@ const vendorPath = new URL(
 const adapterPath = new URL('../../src/Web/fx-adapter.js', import.meta.url);
 const templatePath = new URL('../../src/Web/index.html', import.meta.url);
 
-test('vendored artifact matches the reviewed v1.2.10 build', () =>
+test('vendored artifact matches the reviewed v1.2.11 build', () =>
 {
   const bytes = readFileSync(vendorPath);
   const actual = createHash('sha256').update(bytes).digest('hex').toUpperCase();
@@ -37,6 +37,7 @@ test('vendored IIFE exposes every host API required by BASpark', () =>
     'pointerMove',
     'pointerUp',
     'pointerCancel',
+    'clearTrail',
     'setPaused',
     'updateConfig',
     'setThemeColor',
