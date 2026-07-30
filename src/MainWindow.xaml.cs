@@ -616,9 +616,18 @@ namespace BASpark
                 }
 
                 string? type = GetJsonString(root, "type");
+                string requestedEffectBackend =
+                    GetJsonString(root, "requestedEffectBackend") ?? "unknown";
+                string resolvedEffectBackend =
+                    GetJsonString(root, "resolvedEffectBackend") ?? "unknown";
+                string requestedBloomBackend =
+                    GetJsonString(root, "requestedBloomBackend") ?? "unknown";
+                string resolvedBloomBackend =
+                    GetJsonString(root, "resolvedBloomBackend") ?? "unknown";
                 string backend = GetJsonString(root, "backend") ??
-                    GetJsonString(root, "resolvedBloomBackend") ??
-                    "unknown";
+                    (resolvedEffectBackend == "webgl2"
+                        ? resolvedEffectBackend
+                        : resolvedBloomBackend);
 
                 if (string.Equals(type, "ready", StringComparison.Ordinal))
                 {
@@ -629,16 +638,20 @@ namespace BASpark
                     if (firstReadyMessage)
                     {
                         AppLogger.Info(
-                            $"BA click renderer ready on '{_screenDeviceName}' (backend: {backend}).");
+                            $"BA click renderer ready on '{_screenDeviceName}' " +
+                            $"(effective: {backend}, effect: {resolvedEffectBackend}, " +
+                            $"bloom: {resolvedBloomBackend}).");
                     }
                     return;
                 }
 
                 if (string.Equals(type, "backend", StringComparison.Ordinal))
                 {
-                    string requested = GetJsonString(root, "requestedBloomBackend") ?? "unknown";
                     AppLogger.Info(
-                        $"BA click renderer backend on '{_screenDeviceName}': {backend} (requested: {requested}).");
+                        $"BA click renderer backend on '{_screenDeviceName}': " +
+                        $"effective {backend}; effect {resolvedEffectBackend} " +
+                        $"(requested {requestedEffectBackend}); bloom {resolvedBloomBackend} " +
+                        $"(requested {requestedBloomBackend}).");
                     return;
                 }
 

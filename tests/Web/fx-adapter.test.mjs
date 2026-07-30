@@ -39,6 +39,8 @@ function createHarness(options = {})
       this.width = 800;
       this.height = 600;
       this.config = config;
+      this.resolvedEffectBackend = 'pending';
+      this.resolvedBloomBackend = 'pending';
       this.canvas =
       {
         addEventListener(type, listener)
@@ -63,8 +65,10 @@ function createHarness(options = {})
     getConfig()
     {
       return {
+        effectBackend: this.config.effectBackend,
         bloomBackend: this.config.bloomBackend,
-        resolvedBloomBackend: 'pending',
+        resolvedEffectBackend: this.resolvedEffectBackend,
+        resolvedBloomBackend: this.resolvedBloomBackend,
       };
     }
 
@@ -116,6 +120,7 @@ function createHarness(options = {})
     {
       BAClickFX: FakeFx,
       BLOOM_BACKEND_CHANGE_EVENT: 'baclickfxbackendchange',
+      EFFECT_BACKEND_CHANGE_EVENT: 'baclickfxeffectbackendchange',
     },
     chrome:
     {
@@ -170,15 +175,21 @@ test('initializes the vendored renderer in manual WebView2 mode', () =>
   const harness = createHarness();
 
   assert.equal(harness.fx.config.inputSource, 'manual');
+  assert.equal(harness.fx.config.effectBackend, 'webgl2');
   assert.equal(harness.fx.config.bloomBackend, 'webgl2');
-  assert.equal(harness.fx.config.isolatedCompositing, true);
-  assert.equal(harness.fx.config.lightBackgroundContrastAlpha, 0.35);
+  assert.equal(harness.fx.config.outputCompositing, 'transparent-overlay');
+  assert.equal(harness.fx.config.isolatedCompositing, false);
+  assert.equal(harness.fx.config.lightBackgroundContrastAlpha, 0);
   assert.equal(harness.fx.config.maxDpr, 2);
   assert.equal(harness.calls.messages.at(-1).type, 'ready');
   assert.equal(harness.calls.messages.at(-1).generation, 'test-generation');
+  assert.equal(harness.calls.messages.at(-1).requestedEffectBackend, 'webgl2');
+  assert.equal(harness.calls.messages.at(-1).resolvedEffectBackend, 'pending');
+  assert.equal(harness.calls.messages.at(-1).requestedBloomBackend, 'webgl2');
+  assert.equal(harness.calls.messages.at(-1).resolvedBloomBackend, 'pending');
   assert.deepEqual(
     harness.calls.addEventListener,
-    ['baclickfxbackendchange'],
+    ['baclickfxbackendchange', 'baclickfxeffectbackendchange'],
   );
 });
 
@@ -263,6 +274,9 @@ test('changes a software Bloom fallback to the bounded native backend', () =>
   const harness = createHarness();
   const listener = harness.canvasListeners.get('baclickfxbackendchange');
 
+  harness.fx.resolvedEffectBackend = 'canvas2d';
+  harness.fx.resolvedBloomBackend = 'software';
+
   listener(
     {
       detail:
@@ -274,8 +288,35 @@ test('changes a software Bloom fallback to the bounded native backend', () =>
   );
 
   assert.equal(harness.calls.messages.at(-1).type, 'backend');
+  assert.equal(harness.calls.messages.at(-1).resolvedEffectBackend, 'canvas2d');
   assert.equal(harness.calls.messages.at(-1).resolvedBloomBackend, 'software');
   assert.equal(harness.calls.updateConfig.at(-1).bloomBackend, 'native');
+});
+
+test('reports Full WebGL backend resolution to the host', () =>
+{
+  const harness = createHarness();
+  const listener = harness.canvasListeners.get('baclickfxeffectbackendchange');
+
+  harness.fx.resolvedEffectBackend = 'webgl2';
+  harness.fx.resolvedBloomBackend = 'webgl2';
+  listener(
+    {
+      detail:
+      {
+        requestedEffectBackend: 'webgl2',
+        resolvedEffectBackend: 'webgl2',
+      },
+    },
+  );
+
+  const message = harness.calls.messages.at(-1);
+  assert.equal(message.type, 'backend');
+  assert.equal(message.backend, 'webgl2');
+  assert.equal(message.requestedEffectBackend, 'webgl2');
+  assert.equal(message.resolvedEffectBackend, 'webgl2');
+  assert.equal(message.requestedBloomBackend, 'webgl2');
+  assert.equal(message.resolvedBloomBackend, 'webgl2');
 });
 
 test('reports initialization failure without announcing readiness', () =>

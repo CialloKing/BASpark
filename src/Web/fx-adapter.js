@@ -153,7 +153,7 @@
     {
         const accepted = state.fx.pointerCancel(POINTER_ID);
 
-        // v1.2.11 preserves canceled trails; BASpark cancel marks an ownership boundary.
+        // 宿主取消表示输入所有权切换；清除全部拖尾，避免上一所有者的残留。
         state.fx.clearTrail();
         state.activePointerKind = null;
         return accepted;
@@ -484,24 +484,45 @@
         });
     };
 
-    function handleBackendChange(event)
+    function readBackendState(detail = Object.create(null))
     {
-        const detail = event.detail || Object.create(null);
+        const config = state.fx.getConfig();
+        const requestedEffectBackend =
+            detail.requestedEffectBackend || config.effectBackend;
+        const resolvedEffectBackend =
+            detail.resolvedEffectBackend || config.resolvedEffectBackend;
         const requestedBloomBackend =
-            detail.requestedBloomBackend || state.fx.getConfig().bloomBackend;
+            detail.requestedBloomBackend || config.bloomBackend;
         const resolvedBloomBackend =
-            detail.resolvedBloomBackend ||
-            state.fx.getConfig().resolvedBloomBackend;
+            detail.resolvedBloomBackend || config.resolvedBloomBackend;
 
-        postHostMessage(
-            'backend',
+        return (
             {
-                backend: resolvedBloomBackend,
+                backend: resolvedEffectBackend === 'webgl2'
+                    ? resolvedEffectBackend
+                    : resolvedBloomBackend,
+                requestedEffectBackend,
+                resolvedEffectBackend,
                 requestedBloomBackend,
                 resolvedBloomBackend,
             });
+    }
 
-        if (resolvedBloomBackend === 'software')
+    function handleBackendChange(event)
+    {
+        const backendState = readBackendState(
+            event.detail || Object.create(null),
+        );
+
+        postHostMessage(
+            'backend',
+            backendState,
+        );
+
+        if (
+            backendState.resolvedEffectBackend !== 'webgl2' &&
+            backendState.resolvedBloomBackend === 'software'
+        )
         {
             // 全屏 Float32 软件 Bloom 对桌面覆盖层代价过高，GPU 不可用时改用原生辉光。
             state.fx.updateConfig(
@@ -533,19 +554,28 @@
             state.fx = new window.BAClickFX.BAClickFX(
                 {
                     inputSource: 'manual',
+                    // 桌面像素对 WebView2 不可见，必须输出独立 Coverage Alpha。
+                    effectBackend: 'webgl2',
                     bloomBackend: 'webgl2',
-                    isolatedCompositing: true,
-                    // Preserve BASpark's light-desktop outline after v1.2.11 changed the default.
-                    lightBackgroundContrastAlpha: 0.35,
+                    outputCompositing: 'transparent-overlay',
+                    isolatedCompositing: false,
+                    lightBackgroundContrastAlpha: 0,
                     maxDpr: 2,
                 });
 
-            const backendEventName =
+            const bloomBackendEventName =
                 window.BAClickFX.BLOOM_BACKEND_CHANGE_EVENT ||
                 'baclickfxbackendchange';
+            const effectBackendEventName =
+                window.BAClickFX.EFFECT_BACKEND_CHANGE_EVENT ||
+                'baclickfxeffectbackendchange';
 
             state.fx.canvas.addEventListener(
-                backendEventName,
+                bloomBackendEventName,
+                handleBackendChange,
+            );
+            state.fx.canvas.addEventListener(
+                effectBackendEventName,
                 handleBackendChange,
             );
 
@@ -562,14 +592,10 @@
                     });
             }
 
-            const config = state.fx.getConfig();
-
             postHostMessage(
                 'ready',
-                {
-                    backend: config.resolvedBloomBackend,
-                    resolvedBloomBackend: config.resolvedBloomBackend,
-                });
+                readBackendState(),
+            );
         }
         catch (error)
         {
