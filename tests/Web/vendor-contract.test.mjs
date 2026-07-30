@@ -1,11 +1,12 @@
 import assert from 'node:assert/strict';
+import { Buffer } from 'node:buffer';
 import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import vm from 'node:vm';
 
 const expectedSha256 =
-  '6FDD5849C76354BDAF64C06DD4A9ED0F8ED0BBBF8D42E58DDDC7789E05271B64';
+  '0E4271410C3F5E7986883E442DDF4CBEA00BCE873E2DB2E588C9680ED167612C';
 const vendorPath = new URL(
   '../../src/Web/vendor/ba-click-fx.iife.js',
   import.meta.url,
@@ -13,7 +14,7 @@ const vendorPath = new URL(
 const adapterPath = new URL('../../src/Web/fx-adapter.js', import.meta.url);
 const templatePath = new URL('../../src/Web/index.html', import.meta.url);
 
-test('vendored artifact matches the reviewed v1.2.11 build', () =>
+test('vendored artifact matches the reviewed v1.2.15 build', () =>
 {
   const bytes = readFileSync(vendorPath);
   const actual = createHash('sha256').update(bytes).digest('hex').toUpperCase();
@@ -24,12 +25,20 @@ test('vendored artifact matches the reviewed v1.2.11 build', () =>
 test('vendored IIFE exposes every host API required by BASpark', () =>
 {
   const source = readFileSync(vendorPath, 'utf8');
-  const context = {};
+  const context =
+  {
+    // v1.2.15 在模块初始化时解码内嵌纹理，浏览器会原生提供 atob。
+    atob(encoded)
+    {
+      return Buffer.from(encoded, 'base64').toString('latin1');
+    },
+  };
 
   vm.runInNewContext(source, context, { filename: 'ba-click-fx.iife.js' });
 
   assert.equal(typeof context.BAClickFX.BAClickFX, 'function');
   assert.equal(context.BAClickFX.BLOOM_BACKEND_CHANGE_EVENT, 'baclickfxbackendchange');
+  assert.equal(context.BAClickFX.EFFECT_BACKEND_CHANGE_EVENT, 'baclickfxeffectbackendchange');
 
   const prototype = context.BAClickFX.BAClickFX.prototype;
   for (const method of [
