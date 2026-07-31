@@ -6,7 +6,7 @@ import test from 'node:test';
 import vm from 'node:vm';
 
 const expectedSha256 =
-  '0E4271410C3F5E7986883E442DDF4CBEA00BCE873E2DB2E588C9680ED167612C';
+  'AF40289CBE12B702A36B266CA1BBE0350E3304E7DC8F54237A94EBBA39165AAF';
 const vendorPath = new URL(
   '../../src/Web/vendor/ba-click-fx.iife.js',
   import.meta.url,
@@ -14,7 +14,7 @@ const vendorPath = new URL(
 const adapterPath = new URL('../../src/Web/fx-adapter.js', import.meta.url);
 const templatePath = new URL('../../src/Web/index.html', import.meta.url);
 
-test('vendored artifact matches the reviewed v1.2.15 build', () =>
+test('vendored artifact matches the reviewed v1.2.16 build', () =>
 {
   const bytes = readFileSync(vendorPath);
   const actual = createHash('sha256').update(bytes).digest('hex').toUpperCase();
@@ -27,7 +27,7 @@ test('vendored IIFE exposes every host API required by BASpark', () =>
   const source = readFileSync(vendorPath, 'utf8');
   const context =
   {
-    // v1.2.15 在模块初始化时解码内嵌纹理，浏览器会原生提供 atob。
+    // 当前 IIFE 在模块初始化时解码内嵌纹理，浏览器会原生提供 atob。
     atob(encoded)
     {
       return Buffer.from(encoded, 'base64').toString('latin1');
