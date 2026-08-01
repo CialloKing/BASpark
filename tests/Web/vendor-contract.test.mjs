@@ -6,7 +6,7 @@ import test from 'node:test';
 import vm from 'node:vm';
 
 const expectedSha256 =
-  'AF40289CBE12B702A36B266CA1BBE0350E3304E7DC8F54237A94EBBA39165AAF';
+  '50CBB0438743B20FADC11834732A67577567EBB4F576CF0940334E4704C93F05';
 const vendorPath = new URL(
   '../../src/Web/vendor/ba-click-fx.iife.js',
   import.meta.url,
@@ -14,7 +14,7 @@ const vendorPath = new URL(
 const adapterPath = new URL('../../src/Web/fx-adapter.js', import.meta.url);
 const templatePath = new URL('../../src/Web/index.html', import.meta.url);
 
-test('vendored artifact matches the reviewed v1.2.16 build', () =>
+test('vendored artifact matches the reviewed v1.2.19 build', () =>
 {
   const bytes = readFileSync(vendorPath);
   const actual = createHash('sha256').update(bytes).digest('hex').toUpperCase();
@@ -37,8 +37,19 @@ test('vendored IIFE exposes every host API required by BASpark', () =>
   vm.runInNewContext(source, context, { filename: 'ba-click-fx.iife.js' });
 
   assert.equal(typeof context.BAClickFX.BAClickFX, 'function');
+  assert.equal(typeof context.BAClickFX.createConfig, 'function');
   assert.equal(context.BAClickFX.BLOOM_BACKEND_CHANGE_EVENT, 'baclickfxbackendchange');
   assert.equal(context.BAClickFX.EFFECT_BACKEND_CHANGE_EVENT, 'baclickfxeffectbackendchange');
+
+  const domAddConfig = context.BAClickFX.createConfig(
+    {
+      outputCompositing: 'browser-overlay',
+      hostCompositing: 'screen',
+    },
+  );
+
+  assert.equal(domAddConfig.outputCompositing, 'browser-overlay');
+  assert.equal(domAddConfig.hostCompositing, 'screen');
 
   const prototype = context.BAClickFX.BAClickFX.prototype;
   for (const method of [
