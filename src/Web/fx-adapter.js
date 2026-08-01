@@ -554,10 +554,12 @@
             state.fx = new window.BAClickFX.BAClickFX(
                 {
                     inputSource: 'manual',
-                    // 桌面像素对 WebView2 不可见，必须输出独立 Coverage Alpha。
+                    // 桌面像素对 WebView2 不可见；使用库自有覆盖层的 Screen
+                    // 合成完整载荷，避免 source-over 额外压暗未知背景。
                     effectBackend: 'webgl2',
                     bloomBackend: 'webgl2',
-                    outputCompositing: 'transparent-overlay',
+                    outputCompositing: 'browser-overlay',
+                    hostCompositing: 'screen',
                     isolatedCompositing: false,
                     lightBackgroundContrastAlpha: 0,
                     maxDpr: 2,
