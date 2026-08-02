@@ -495,6 +495,21 @@
             detail.requestedBloomBackend || config.bloomBackend;
         const resolvedBloomBackend =
             detail.resolvedBloomBackend || config.resolvedBloomBackend;
+        const requestedHostCompositing =
+            detail.requestedHostCompositing ||
+            config.hostCompositing ||
+            'unknown';
+        const resolvedHostCompositing =
+            detail.resolvedHostCompositing ||
+            config.resolvedHostCompositing ||
+            config.hostCompositing ||
+            'unknown';
+        const hostCompositingSurface =
+            detail.hostCompositingSurface ||
+            config.hostCompositingSurface ||
+            'unknown';
+        const compositingWarning =
+            detail.compositingWarning ?? config.compositingWarning ?? null;
 
         return (
             {
@@ -505,6 +520,10 @@
                 resolvedEffectBackend,
                 requestedBloomBackend,
                 resolvedBloomBackend,
+                requestedHostCompositing,
+                resolvedHostCompositing,
+                hostCompositingSurface,
+                compositingWarning,
             });
     }
 
@@ -554,12 +573,16 @@
             state.fx = new window.BAClickFX.BAClickFX(
                 {
                     inputSource: 'manual',
-                    // 桌面像素对 WebView2 不可见；使用库自有覆盖层的 Screen
-                    // 合成完整载荷，避免 source-over 额外压暗未知背景。
+                    // 透明 WebView2 窗口看不到桌面背景；保持 source-over，
+                    // 由 visual-max 仅调整独立 Coverage 的 Alpha 分配。
                     effectBackend: 'webgl2',
                     bloomBackend: 'webgl2',
                     outputCompositing: 'browser-overlay',
-                    hostCompositing: 'screen',
+                    overlayAlphaPolicy: 'visual-max',
+                    overlayColorCompensation: 'none',
+                    overlayAlphaLimit: 250 / 255,
+                    hostCompositing: 'source-over',
+                    hostCompositingSurface: 'transparent-window',
                     isolatedCompositing: false,
                     lightBackgroundContrastAlpha: 0,
                     maxDpr: 2,
@@ -571,6 +594,9 @@
             const effectBackendEventName =
                 window.BAClickFX.EFFECT_BACKEND_CHANGE_EVENT ||
                 'baclickfxeffectbackendchange';
+            const hostCompositingEventName =
+                window.BAClickFX.HOST_COMPOSITING_CHANGE_EVENT ||
+                'baclickfxhostcompositingchange';
 
             state.fx.canvas.addEventListener(
                 bloomBackendEventName,
@@ -578,6 +604,10 @@
             );
             state.fx.canvas.addEventListener(
                 effectBackendEventName,
+                handleBackendChange,
+            );
+            state.fx.canvas.addEventListener(
+                hostCompositingEventName,
                 handleBackendChange,
             );
 

@@ -41,6 +41,8 @@ function createHarness(options = {})
       this.config = config;
       this.resolvedEffectBackend = 'pending';
       this.resolvedBloomBackend = 'pending';
+      this.resolvedHostCompositing = 'pending';
+      this.compositingWarning = null;
       this.canvas =
       {
         addEventListener(type, listener)
@@ -69,6 +71,10 @@ function createHarness(options = {})
         bloomBackend: this.config.bloomBackend,
         resolvedEffectBackend: this.resolvedEffectBackend,
         resolvedBloomBackend: this.resolvedBloomBackend,
+        hostCompositing: this.config.hostCompositing,
+        resolvedHostCompositing: this.resolvedHostCompositing,
+        hostCompositingSurface: this.config.hostCompositingSurface,
+        compositingWarning: this.compositingWarning,
       };
     }
 
@@ -121,6 +127,7 @@ function createHarness(options = {})
       BAClickFX: FakeFx,
       BLOOM_BACKEND_CHANGE_EVENT: 'baclickfxbackendchange',
       EFFECT_BACKEND_CHANGE_EVENT: 'baclickfxeffectbackendchange',
+      HOST_COMPOSITING_CHANGE_EVENT: 'baclickfxhostcompositingchange',
     },
     chrome:
     {
@@ -178,7 +185,11 @@ test('initializes the vendored renderer in manual WebView2 mode', () =>
   assert.equal(harness.fx.config.effectBackend, 'webgl2');
   assert.equal(harness.fx.config.bloomBackend, 'webgl2');
   assert.equal(harness.fx.config.outputCompositing, 'browser-overlay');
-  assert.equal(harness.fx.config.hostCompositing, 'screen');
+  assert.equal(harness.fx.config.overlayAlphaPolicy, 'visual-max');
+  assert.equal(harness.fx.config.overlayColorCompensation, 'none');
+  assert.equal(harness.fx.config.overlayAlphaLimit, 250 / 255);
+  assert.equal(harness.fx.config.hostCompositing, 'source-over');
+  assert.equal(harness.fx.config.hostCompositingSurface, 'transparent-window');
   assert.equal(harness.fx.config.isolatedCompositing, false);
   assert.equal(harness.fx.config.lightBackgroundContrastAlpha, 0);
   assert.equal(harness.fx.config.maxDpr, 2);
@@ -190,7 +201,11 @@ test('initializes the vendored renderer in manual WebView2 mode', () =>
   assert.equal(harness.calls.messages.at(-1).resolvedBloomBackend, 'pending');
   assert.deepEqual(
     harness.calls.addEventListener,
-    ['baclickfxbackendchange', 'baclickfxeffectbackendchange'],
+    [
+      'baclickfxbackendchange',
+      'baclickfxeffectbackendchange',
+      'baclickfxhostcompositingchange',
+    ],
   );
 });
 
@@ -318,6 +333,35 @@ test('reports Full WebGL backend resolution to the host', () =>
   assert.equal(message.resolvedEffectBackend, 'webgl2');
   assert.equal(message.requestedBloomBackend, 'webgl2');
   assert.equal(message.resolvedBloomBackend, 'webgl2');
+});
+
+test('reports resolved transparent-window compositing to the host', () =>
+{
+  const harness = createHarness();
+  const listener = harness.canvasListeners.get(
+    'baclickfxhostcompositingchange',
+  );
+
+  harness.fx.resolvedHostCompositing = 'source-over';
+  harness.fx.compositingWarning = null;
+  listener(
+    {
+      detail:
+      {
+        requestedHostCompositing: 'source-over',
+        resolvedHostCompositing: 'source-over',
+        hostCompositingSurface: 'transparent-window',
+        compositingWarning: null,
+      },
+    },
+  );
+
+  const message = harness.calls.messages.at(-1);
+  assert.equal(message.type, 'backend');
+  assert.equal(message.requestedHostCompositing, 'source-over');
+  assert.equal(message.resolvedHostCompositing, 'source-over');
+  assert.equal(message.hostCompositingSurface, 'transparent-window');
+  assert.equal(message.compositingWarning, null);
 });
 
 test('reports initialization failure without announcing readiness', () =>

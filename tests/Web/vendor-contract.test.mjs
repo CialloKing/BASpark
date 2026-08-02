@@ -6,7 +6,7 @@ import test from 'node:test';
 import vm from 'node:vm';
 
 const expectedSha256 =
-  '50CBB0438743B20FADC11834732A67577567EBB4F576CF0940334E4704C93F05';
+  '03A52E9AD844946ACE15A6BDA4589947124F4E352577AAD7994DDE47E682E656';
 const vendorPath = new URL(
   '../../src/Web/vendor/ba-click-fx.iife.js',
   import.meta.url,
@@ -14,7 +14,7 @@ const vendorPath = new URL(
 const adapterPath = new URL('../../src/Web/fx-adapter.js', import.meta.url);
 const templatePath = new URL('../../src/Web/index.html', import.meta.url);
 
-test('vendored artifact matches the reviewed v1.2.19 build', () =>
+test('vendored artifact matches the reviewed local v1.2.19 build', () =>
 {
   const bytes = readFileSync(vendorPath);
   const actual = createHash('sha256').update(bytes).digest('hex').toUpperCase();
@@ -40,16 +40,25 @@ test('vendored IIFE exposes every host API required by BASpark', () =>
   assert.equal(typeof context.BAClickFX.createConfig, 'function');
   assert.equal(context.BAClickFX.BLOOM_BACKEND_CHANGE_EVENT, 'baclickfxbackendchange');
   assert.equal(context.BAClickFX.EFFECT_BACKEND_CHANGE_EVENT, 'baclickfxeffectbackendchange');
+  assert.equal(context.BAClickFX.HOST_COMPOSITING_CHANGE_EVENT, 'baclickfxhostcompositingchange');
 
   const domAddConfig = context.BAClickFX.createConfig(
     {
       outputCompositing: 'browser-overlay',
-      hostCompositing: 'screen',
+      overlayAlphaPolicy: 'visual-max',
+      overlayColorCompensation: 'none',
+      overlayAlphaLimit: 250 / 255,
+      hostCompositing: 'source-over',
+      hostCompositingSurface: 'transparent-window',
     },
   );
 
   assert.equal(domAddConfig.outputCompositing, 'browser-overlay');
-  assert.equal(domAddConfig.hostCompositing, 'screen');
+  assert.equal(domAddConfig.overlayAlphaPolicy, 'visual-max');
+  assert.equal(domAddConfig.overlayColorCompensation, 'none');
+  assert.equal(domAddConfig.overlayAlphaLimit, 250 / 255);
+  assert.equal(domAddConfig.hostCompositing, 'source-over');
+  assert.equal(domAddConfig.hostCompositingSurface, 'transparent-window');
 
   const prototype = context.BAClickFX.BAClickFX.prototype;
   for (const method of [

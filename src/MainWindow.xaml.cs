@@ -629,6 +629,14 @@ namespace BASpark
                     GetJsonString(root, "requestedBloomBackend") ?? "unknown";
                 string resolvedBloomBackend =
                     GetJsonString(root, "resolvedBloomBackend") ?? "unknown";
+                string requestedHostCompositing =
+                    GetJsonString(root, "requestedHostCompositing") ?? "unknown";
+                string resolvedHostCompositing =
+                    GetJsonString(root, "resolvedHostCompositing") ?? "unknown";
+                string hostCompositingSurface =
+                    GetJsonString(root, "hostCompositingSurface") ?? "unknown";
+                string? compositingWarning =
+                    GetJsonString(root, "compositingWarning");
                 string backend = GetJsonString(root, "backend") ??
                     (resolvedEffectBackend == "webgl2"
                         ? resolvedEffectBackend
@@ -645,7 +653,9 @@ namespace BASpark
                         AppLogger.Info(
                             $"BA click renderer ready on '{_screenDeviceName}' " +
                             $"(effective: {backend}, effect: {resolvedEffectBackend}, " +
-                            $"bloom: {resolvedBloomBackend}).");
+                            $"bloom: {resolvedBloomBackend}, host: " +
+                            $"{resolvedHostCompositing} on {hostCompositingSurface}" +
+                            $"{FormatCompositingWarning(compositingWarning)}).");
                     }
                     return;
                 }
@@ -656,7 +666,10 @@ namespace BASpark
                         $"BA click renderer backend on '{_screenDeviceName}': " +
                         $"effective {backend}; effect {resolvedEffectBackend} " +
                         $"(requested {requestedEffectBackend}); bloom {resolvedBloomBackend} " +
-                        $"(requested {requestedBloomBackend}).");
+                        $"(requested {requestedBloomBackend}); host " +
+                        $"{resolvedHostCompositing} on {hostCompositingSurface} " +
+                        $"(requested {requestedHostCompositing})" +
+                        $"{FormatCompositingWarning(compositingWarning)}.");
                     return;
                 }
 
@@ -685,6 +698,13 @@ namespace BASpark
             }
 
             return value.GetString();
+        }
+
+        private static string FormatCompositingWarning(string? warning)
+        {
+            return string.IsNullOrWhiteSpace(warning)
+                ? string.Empty
+                : $"; warning: {warning}";
         }
 
         private void StartRendererReadyTimeout()
