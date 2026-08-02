@@ -230,6 +230,11 @@ namespace BASpark
             _ = hz;
         }
 
+        public void SetCurveDraw(bool enabled)
+        {
+            ExecuteScript($"window.ApplyCurveDraw = {(enabled ? "true" : "false")};");
+        }
+
         public void UpdateTouchMode(bool enabled)
         {
             ConfigManager.IsTouchscreenMode = enabled;

@@ -584,6 +584,7 @@ namespace BASpark
             SliderScale.Value = ConfigManager.EffectScale;
             SliderOpacity.Value = ConfigManager.EffectOpacity * 100;
             CheckLinkedAnimationSpeed.IsChecked = ConfigManager.UseLinkedAnimationSpeed;
+            CheckApplyCurveDraw.IsChecked = ConfigManager.ApplyCurveDraw;
             SliderSpeed.Value = ConfigManager.EffectSpeed;
             SliderTrailAnimSpeed.Value = ConfigManager.TrailAnimationSpeed;
             SliderClickAnimSpeed.Value = ConfigManager.ClickAnimationSpeed;
@@ -1317,6 +1318,7 @@ namespace BASpark
             App.Overlay?.UpdateColor(ConfigManager.ParticleColor);
             App.Overlay?.UpdateEffectSettings(effectScale, effectOpacity, trailSp, clickSp);
             App.Overlay?.UpdateTrailRefreshRate(trailRefreshRate);
+            App.Overlay?.SetCurveDraw(CheckApplyCurveDraw.IsChecked ?? false);
 
             VisualResetOverlay.Visibility = Visibility.Collapsed;
             System.Windows.MessageBox.Show(
@@ -1423,6 +1425,7 @@ namespace BASpark
             ConfigManager.Save("ClickTriggerType", clickType);
             ConfigManager.Save("EnableMiddleClickTrigger", middleClickEnabled);
             ConfigManager.Save("ScreenshotCompatibilityMode", screenshotCompatibilityEnabled);
+            ConfigManager.Save("ApplyCurveDraw", CheckApplyCurveDraw.IsChecked ?? false);
 
             string sidebarBackgroundPath = TxtSidebarBackgroundPath?.Text?.Trim() ?? string.Empty;
             if (!string.IsNullOrWhiteSpace(sidebarBackgroundPath))
@@ -1484,6 +1487,7 @@ namespace BASpark
             App.Overlay?.RefreshEnvironmentFilterState();
             App.Overlay?.UpdateTouchMode(isTouchscreenEnabled);
             App.Overlay?.UpdateScreenshotCompatibilityMode(screenshotCompatibilityEnabled);
+            App.Overlay?.SetCurveDraw(CheckApplyCurveDraw.IsChecked ?? false);
             if (!previousEnabledScreenIds.SetEquals(selectedIds))
             {
                 App.Overlay?.RefreshScreenSelection();
@@ -1670,11 +1674,14 @@ namespace BASpark
                     Arguments = ConfigManager.StartSilent ? "/silent" : ""
                 };
 
+                _skipSaveOnClosing = true;
+
                 Process.Start(startInfo);
                 System.Windows.Application.Current.Shutdown();
             }
             catch (Exception ex)
             {
+                _skipSaveOnClosing = false; 
                 System.Windows.MessageBox.Show(
                     Localization.Format("Msg_RestartAdminFailed", ex.Message),
                     Localization.Get("Msg_Error"),
@@ -1683,13 +1690,45 @@ namespace BASpark
             }
         }
 
+        private bool _skipSaveOnClosing = false;
+
         protected override void OnClosing(System.ComponentModel.CancelEventArgs e)
         {
-            ConfigManager.Save("TotalClicks", ConfigManager.TotalClicks);
+            if (!_skipSaveOnClosing)
+            {
+                ConfigManager.Save("TotalClicks", ConfigManager.TotalClicks);
+            }
             base.OnClosing(e);
         }
 
+        protected override void OnClosed(EventArgs e)
+        {
+            try
+            {
+                if (_refreshTimer != null)
+                {
+                    _refreshTimer.Stop();
+                }
+
+                if (_noticeTimer != null)
+                {
+                    _noticeTimer.Stop();
+                }
+            }
+            catch (Exception ex)
+            {
+                AppLogger.Warn($"Failed to dispose panel timers during close: {ex.Message}");
+            }
+
+            base.OnClosed(e);
+        }
+
         private void EffectSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+        {
+            if (!IsLoaded) return;
+        }
+
+        private void CurveDraw_Changed(object sender, RoutedEventArgs e)
         {
             if (!IsLoaded) return;
         }
@@ -1753,11 +1792,13 @@ namespace BASpark
             {
                 try
                 {
+                    _skipSaveOnClosing = true;
                     ConfigManager.ResetAndClear();
                     System.Windows.Application.Current.Shutdown();
                 }
                 catch (Exception ex)
                 {
+                    _skipSaveOnClosing = false;
                     System.Windows.MessageBox.Show(Localization.Format("Msg_DeleteFailed", ex.Message));
                 }
             }
