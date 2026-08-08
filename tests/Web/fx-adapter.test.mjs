@@ -20,6 +20,7 @@ function createHarness(options = {})
     pointerDown: [],
     pointerMove: [],
     pointerUp: [],
+    setCompositingReference: [],
     setPaused: [],
     setThemeColor: [],
     updateConfig: [],
@@ -107,6 +108,12 @@ function createHarness(options = {})
       calls.setPaused.push({ paused, pauseOptions });
     }
 
+    setCompositingReference(source, referenceOptions)
+    {
+      calls.setCompositingReference.push({ source, referenceOptions });
+      return true;
+    }
+
     setThemeColor(color)
     {
       calls.setThemeColor.push(color);
@@ -186,13 +193,14 @@ test('initializes the vendored renderer in manual WebView2 mode', () =>
   assert.equal(harness.fx.config.bloomBackend, 'webgl2');
   assert.equal(harness.fx.config.outputCompositing, 'browser-overlay');
   assert.equal(harness.fx.config.overlayAlphaPolicy, 'visual-max');
-  assert.equal(harness.fx.config.overlayColorCompensation, 'none');
-  assert.equal(harness.fx.config.overlayAlphaLimit, 250 / 255);
-  assert.equal(harness.fx.config.hostCompositing, 'screen');
+  assert.equal(harness.fx.config.overlayColorCompensation, 'bright-core');
+  assert.equal(harness.fx.config.overlayAlphaLimit, 0.85);
+  assert.equal(harness.fx.config.hostCompositing, 'source-over');
   assert.equal(harness.fx.config.hostCompositingSurface, 'transparent-window');
   assert.equal(harness.fx.config.isolatedCompositing, false);
   assert.equal(harness.fx.config.lightBackgroundContrastAlpha, 0);
   assert.equal(harness.fx.config.maxDpr, 2);
+  assert.equal(harness.calls.setCompositingReference.length, 0);
   assert.equal(harness.calls.messages.at(-1).type, 'ready');
   assert.equal(harness.calls.messages.at(-1).generation, 'test-generation');
   assert.equal(harness.calls.messages.at(-1).requestedEffectBackend, 'webgl2');
@@ -335,7 +343,7 @@ test('reports Full WebGL backend resolution to the host', () =>
   assert.equal(message.resolvedBloomBackend, 'webgl2');
 });
 
-test('reports the DOM Add transparent-window fallback to the host', () =>
+test('reports resolved source-over transparent-window compositing to the host', () =>
 {
   const harness = createHarness();
   const listener = harness.canvasListeners.get(
@@ -343,28 +351,25 @@ test('reports the DOM Add transparent-window fallback to the host', () =>
   );
 
   harness.fx.resolvedHostCompositing = 'source-over';
-  harness.fx.compositingWarning = 'screen-requires-visible-backdrop';
+  harness.fx.compositingWarning = null;
   listener(
     {
       detail:
       {
-        requestedHostCompositing: 'screen',
+        requestedHostCompositing: 'source-over',
         resolvedHostCompositing: 'source-over',
         hostCompositingSurface: 'transparent-window',
-        compositingWarning: 'screen-requires-visible-backdrop',
+        compositingWarning: null,
       },
     },
   );
 
   const message = harness.calls.messages.at(-1);
   assert.equal(message.type, 'backend');
-  assert.equal(message.requestedHostCompositing, 'screen');
+  assert.equal(message.requestedHostCompositing, 'source-over');
   assert.equal(message.resolvedHostCompositing, 'source-over');
   assert.equal(message.hostCompositingSurface, 'transparent-window');
-  assert.equal(
-    message.compositingWarning,
-    'screen-requires-visible-backdrop',
-  );
+  assert.equal(message.compositingWarning, null);
 });
 
 test('reports initialization failure without announcing readiness', () =>

@@ -42,23 +42,23 @@ test('vendored IIFE exposes every host API required by BASpark', () =>
   assert.equal(context.BAClickFX.EFFECT_BACKEND_CHANGE_EVENT, 'baclickfxeffectbackendchange');
   assert.equal(context.BAClickFX.HOST_COMPOSITING_CHANGE_EVENT, 'baclickfxhostcompositingchange');
 
-  const domAddConfig = context.BAClickFX.createConfig(
+  const lightBackgroundConfig = context.BAClickFX.createConfig(
     {
       outputCompositing: 'browser-overlay',
       overlayAlphaPolicy: 'visual-max',
-      overlayColorCompensation: 'none',
-      overlayAlphaLimit: 250 / 255,
-      hostCompositing: 'screen',
+      overlayColorCompensation: 'bright-core',
+      overlayAlphaLimit: 0.85,
+      hostCompositing: 'source-over',
       hostCompositingSurface: 'transparent-window',
     },
   );
 
-  assert.equal(domAddConfig.outputCompositing, 'browser-overlay');
-  assert.equal(domAddConfig.overlayAlphaPolicy, 'visual-max');
-  assert.equal(domAddConfig.overlayColorCompensation, 'none');
-  assert.equal(domAddConfig.overlayAlphaLimit, 250 / 255);
-  assert.equal(domAddConfig.hostCompositing, 'screen');
-  assert.equal(domAddConfig.hostCompositingSurface, 'transparent-window');
+  assert.equal(lightBackgroundConfig.outputCompositing, 'browser-overlay');
+  assert.equal(lightBackgroundConfig.overlayAlphaPolicy, 'visual-max');
+  assert.equal(lightBackgroundConfig.overlayColorCompensation, 'bright-core');
+  assert.equal(lightBackgroundConfig.overlayAlphaLimit, 0.85);
+  assert.equal(lightBackgroundConfig.hostCompositing, 'source-over');
+  assert.equal(lightBackgroundConfig.hostCompositingSurface, 'transparent-window');
 
   const prototype = context.BAClickFX.BAClickFX.prototype;
   for (const method of [

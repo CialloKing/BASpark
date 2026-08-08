@@ -573,15 +573,15 @@
             state.fx = new window.BAClickFX.BAClickFX(
                 {
                     inputSource: 'manual',
-                    // 记录用户选择的 DOM Add；透明 WebView2 窗口没有可见的
-                    // DOM 背景时，上游会回退为 source-over 并将原因报告给 C# 宿主。
+                    // WebView2 无法读取窗口后的桌面背景；使用 source-over，
+                    // 再以浅色背景补偿和 Alpha 上限提高未知背景上的可见性。
                     effectBackend: 'webgl2',
                     bloomBackend: 'webgl2',
                     outputCompositing: 'browser-overlay',
                     overlayAlphaPolicy: 'visual-max',
-                    overlayColorCompensation: 'none',
-                    overlayAlphaLimit: 250 / 255,
-                    hostCompositing: 'screen',
+                    overlayColorCompensation: 'bright-core',
+                    overlayAlphaLimit: 0.85,
+                    hostCompositing: 'source-over',
                     hostCompositingSurface: 'transparent-window',
                     isolatedCompositing: false,
                     lightBackgroundContrastAlpha: 0,
