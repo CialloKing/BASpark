@@ -48,7 +48,7 @@ test('vendored IIFE exposes every host API required by BASpark', () =>
       overlayAlphaPolicy: 'visual-max',
       overlayColorCompensation: 'none',
       overlayAlphaLimit: 250 / 255,
-      hostCompositing: 'source-over',
+      hostCompositing: 'screen',
       hostCompositingSurface: 'transparent-window',
     },
   );
@@ -57,7 +57,7 @@ test('vendored IIFE exposes every host API required by BASpark', () =>
   assert.equal(domAddConfig.overlayAlphaPolicy, 'visual-max');
   assert.equal(domAddConfig.overlayColorCompensation, 'none');
   assert.equal(domAddConfig.overlayAlphaLimit, 250 / 255);
-  assert.equal(domAddConfig.hostCompositing, 'source-over');
+  assert.equal(domAddConfig.hostCompositing, 'screen');
   assert.equal(domAddConfig.hostCompositingSurface, 'transparent-window');
 
   const prototype = context.BAClickFX.BAClickFX.prototype;

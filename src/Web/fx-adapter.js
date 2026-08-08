@@ -573,15 +573,15 @@
             state.fx = new window.BAClickFX.BAClickFX(
                 {
                     inputSource: 'manual',
-                    // 透明 WebView2 窗口看不到桌面背景；保持 source-over，
-                    // 由 visual-max 仅调整独立 Coverage 的 Alpha 分配。
+                    // 记录用户选择的 DOM Add；透明 WebView2 窗口没有可见的
+                    // DOM 背景时，上游会回退为 source-over 并将原因报告给 C# 宿主。
                     effectBackend: 'webgl2',
                     bloomBackend: 'webgl2',
                     outputCompositing: 'browser-overlay',
                     overlayAlphaPolicy: 'visual-max',
                     overlayColorCompensation: 'none',
                     overlayAlphaLimit: 250 / 255,
-                    hostCompositing: 'source-over',
+                    hostCompositing: 'screen',
                     hostCompositingSurface: 'transparent-window',
                     isolatedCompositing: false,
                     lightBackgroundContrastAlpha: 0,

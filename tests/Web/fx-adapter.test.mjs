@@ -188,7 +188,7 @@ test('initializes the vendored renderer in manual WebView2 mode', () =>
   assert.equal(harness.fx.config.overlayAlphaPolicy, 'visual-max');
   assert.equal(harness.fx.config.overlayColorCompensation, 'none');
   assert.equal(harness.fx.config.overlayAlphaLimit, 250 / 255);
-  assert.equal(harness.fx.config.hostCompositing, 'source-over');
+  assert.equal(harness.fx.config.hostCompositing, 'screen');
   assert.equal(harness.fx.config.hostCompositingSurface, 'transparent-window');
   assert.equal(harness.fx.config.isolatedCompositing, false);
   assert.equal(harness.fx.config.lightBackgroundContrastAlpha, 0);
@@ -335,7 +335,7 @@ test('reports Full WebGL backend resolution to the host', () =>
   assert.equal(message.resolvedBloomBackend, 'webgl2');
 });
 
-test('reports resolved transparent-window compositing to the host', () =>
+test('reports the DOM Add transparent-window fallback to the host', () =>
 {
   const harness = createHarness();
   const listener = harness.canvasListeners.get(
@@ -343,25 +343,28 @@ test('reports resolved transparent-window compositing to the host', () =>
   );
 
   harness.fx.resolvedHostCompositing = 'source-over';
-  harness.fx.compositingWarning = null;
+  harness.fx.compositingWarning = 'screen-requires-visible-backdrop';
   listener(
     {
       detail:
       {
-        requestedHostCompositing: 'source-over',
+        requestedHostCompositing: 'screen',
         resolvedHostCompositing: 'source-over',
         hostCompositingSurface: 'transparent-window',
-        compositingWarning: null,
+        compositingWarning: 'screen-requires-visible-backdrop',
       },
     },
   );
 
   const message = harness.calls.messages.at(-1);
   assert.equal(message.type, 'backend');
-  assert.equal(message.requestedHostCompositing, 'source-over');
+  assert.equal(message.requestedHostCompositing, 'screen');
   assert.equal(message.resolvedHostCompositing, 'source-over');
   assert.equal(message.hostCompositingSurface, 'transparent-window');
-  assert.equal(message.compositingWarning, null);
+  assert.equal(
+    message.compositingWarning,
+    'screen-requires-visible-backdrop',
+  );
 });
 
 test('reports initialization failure without announcing readiness', () =>
