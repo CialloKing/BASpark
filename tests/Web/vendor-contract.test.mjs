@@ -6,7 +6,7 @@ import test from 'node:test';
 import vm from 'node:vm';
 
 const expectedSha256 =
-  'FC3282BED12E3A3F09BF060963C0B9CE29317947DF4636A987E316BE54BB5F87';
+  '038A80308F04517BFF69C0A8AB37776F1D0412D80E455E8508E21F51FA7B3839';
 const vendorPath = new URL(
   '../../src/Web/vendor/ba-click-fx.iife.js',
   import.meta.url,
@@ -14,7 +14,7 @@ const vendorPath = new URL(
 const adapterPath = new URL('../../src/Web/fx-adapter.js', import.meta.url);
 const templatePath = new URL('../../src/Web/index.html', import.meta.url);
 
-test('vendored artifact matches the reviewed v1.2.21 build', () =>
+test('vendored artifact matches the reviewed v1.2.23 build', () =>
 {
   const bytes = readFileSync(vendorPath);
   const actual = createHash('sha256').update(bytes).digest('hex').toUpperCase();
