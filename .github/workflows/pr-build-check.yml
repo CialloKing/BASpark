@@ -20,6 +20,15 @@ jobs:
         with:
           dotnet-version: '8.0.x'
 
+      - name: Setup Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Run Web tests
+        shell: pwsh
+        run: node --test tests/Web/fx-adapter.test.mjs tests/Web/vendor-contract.test.mjs
+
       - name: Run tests
         shell: pwsh
         run: dotnet test BASpark.sln -c Release --verbosity normal

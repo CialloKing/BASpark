@@ -82,9 +82,8 @@ namespace BASpark
         private readonly Dictionary<string, MainWindow> _overlays = new(StringComparer.OrdinalIgnoreCase);
         private IKeyboardMouseEvents? _globalHook;
         private MainWindow? _activePointerOverlay;
-        private long _lastMoveTicks;
+        private MainWindow? _lastTrailOverlay;
         private long _lastClickTicks;
-        private long _moveIntervalTicks = 250000;
         private bool _isPrimaryPointerDown;
         private bool _isTouchLikeInput;
         private bool _isSuppressedByEnvironment;
@@ -124,7 +123,7 @@ namespace BASpark
         {
             RebuildWindows(forceRebuild: true);
             SetupGlobalHooks();
-            UpdateTrailRefreshRate(ConfigManager.TrailRefreshRate);
+            UpdateInputSamplingRate(ConfigManager.InputSamplingRate);
             RefreshEnvironmentFilterState();
             SystemEvents.DisplaySettingsChanged += HandleDisplaySettingsChanged;
             SystemEvents.PowerModeChanged += HandlePowerModeChanged;
@@ -134,11 +133,12 @@ namespace BASpark
         public void UpdateColor(string color) => ForEachOverlay(w => w.UpdateColor(color));
         public void UpdateEffectSettings(double scale, double opacity, double trailSpeed, double clickSpeed) =>
             ForEachOverlay(w => w.UpdateEffectSettings(scale, opacity, trailSpeed, clickSpeed));
-        public void UpdateTrailRefreshRate(int hz)
+        public void UpdateInputSamplingRate(int rateHz)
         {
-            hz = Math.Clamp(hz, 10, 240);
-            _moveIntervalTicks = TimeSpan.FromSeconds(1.0 / hz).Ticks;
-            ForEachOverlay(w => w.UpdateTrailRefreshRate(hz));
+            int normalizedRate = ConfigManager.NormalizeInputSamplingRate(rateHz);
+            // ba-click-fx 使用未缩放的真实输入时间采样。宿主只负责转发，
+            // 避免 C# 与 WebView2 按同一频率连续丢点而让实际频率再次降低。
+            ForEachOverlay(w => w.UpdateInputSamplingRate(normalizedRate));
         }
         public void UpdateTouchMode(bool enabled) => ForEachOverlay(w => w.UpdateTouchMode(enabled));
         public void UpdateScreenshotCompatibilityMode(bool enabled)
@@ -551,7 +551,19 @@ namespace BASpark
             }
 
             MainWindow? target = ResolveTargetOverlay(cursorX, cursorY);
-            if (target == null) return;
+            if (target == null)
+            {
+                return;
+            }
+
+            if (ConfigManager.EnableAlwaysTrailEffect)
+            {
+                SwitchAlwaysTrailOverlay(target);
+            }
+            else
+            {
+                SwitchAlwaysTrailOverlay(null);
+            }
 
             _isPrimaryPointerDown = true;
             _isTouchLikeInput = !CursorIsVisible();
@@ -568,15 +580,22 @@ namespace BASpark
         private void OnMouseMoveExt(object? sender, MouseEventExtArgs e)
         {
             // 拖尾仅在点击特效开启或常驻拖尾开启时渲染
-            if (!ConfigManager.IsTrailEffectActive) return;
-            if (!CanRenderEffects()) return;
+            if (!ConfigManager.IsTrailEffectActive)
+            {
+                SwitchAlwaysTrailOverlay(null);
+                return;
+            }
+            if (!CanRenderEffects())
+            {
+                return;
+            }
 
             bool cursorVisible = CursorIsVisible();
-            if (!cursorVisible && !_isPrimaryPointerDown) return;
-
-            long currentTicks = DateTime.Now.Ticks;
-            if (currentTicks - _lastMoveTicks < _moveIntervalTicks) return;
-            _lastMoveTicks = currentTicks;
+            if (!cursorVisible && !_isPrimaryPointerDown)
+            {
+                SwitchAlwaysTrailOverlay(null);
+                return;
+            }
 
             if (!TryGetPhysicalCursorPosition(out int cursorX, out int cursorY))
             {
@@ -584,7 +603,12 @@ namespace BASpark
                 cursorY = e.Y;
             }
 
-            var target = _activePointerOverlay ?? ResolveTargetOverlay(cursorX, cursorY);
+            MainWindow? target = _activePointerOverlay ?? ResolveTargetOverlay(cursorX, cursorY);
+            if (!_isPrimaryPointerDown)
+            {
+                SwitchAlwaysTrailOverlay(
+                    ConfigManager.EnableAlwaysTrailEffect ? target : null);
+            }
             target?.EmitMove(cursorX, cursorY, _isTouchLikeInput || !cursorVisible);
         }
 
@@ -604,9 +628,7 @@ namespace BASpark
             }
 
             _activePointerOverlay?.EmitUp(_isTouchLikeInput);
-            _isPrimaryPointerDown = false;
-            _isTouchLikeInput = false;
-            _activePointerOverlay = null;
+            ResetPrimaryPointerState();
         }
 
         /// <summary>
@@ -638,9 +660,16 @@ namespace BASpark
 
         private void ReleasePointerStateSilent()
         {
-            _isPrimaryPointerDown = false;
-            _isTouchLikeInput = false;
-            _activePointerOverlay = null;
+            MainWindow? activePointerOverlay = _activePointerOverlay;
+            activePointerOverlay?.EmitCancel();
+            if (_lastTrailOverlay != null &&
+                !ReferenceEquals(_lastTrailOverlay, activePointerOverlay))
+            {
+                _lastTrailOverlay.EmitCancel();
+            }
+
+            ResetPrimaryPointerState();
+            _lastTrailOverlay = null;
         }
 
         private void ReleasePointerState()
@@ -652,7 +681,26 @@ namespace BASpark
             }
 
             _activePointerOverlay?.EmitUp(_isTouchLikeInput);
-            ReleasePointerStateSilent();
+            ResetPrimaryPointerState();
+        }
+
+        private void ResetPrimaryPointerState()
+        {
+            _isPrimaryPointerDown = false;
+            _isTouchLikeInput = false;
+            _activePointerOverlay = null;
+        }
+
+        private void SwitchAlwaysTrailOverlay(MainWindow? target)
+        {
+            if (ReferenceEquals(_lastTrailOverlay, target))
+            {
+                return;
+            }
+
+            // The old renderer must forget its last point before coordinates switch to another screen.
+            _lastTrailOverlay?.EmitCancel();
+            _lastTrailOverlay = target;
         }
 
         private MainWindow? ResolveTargetOverlay(int x, int y)
@@ -680,6 +728,14 @@ namespace BASpark
                 .Where(item => enabledIds.Contains(item.Screen.DeviceName))
                 .Select(item => item.Screen)
                 .ToDictionary(screen => screen.DeviceName, screen => screen, StringComparer.OrdinalIgnoreCase);
+
+            bool topologyChanged = forceRebuild ||
+                _overlays.Keys.Except(targetScreens.Keys, StringComparer.OrdinalIgnoreCase).Any() ||
+                targetScreens.Keys.Except(_overlays.Keys, StringComparer.OrdinalIgnoreCase).Any();
+            if (topologyChanged)
+            {
+                ReleasePointerStateSilent();
+            }
 
             if (forceRebuild)
             {
@@ -719,7 +775,25 @@ namespace BASpark
                 return;
             }
 
-            try { overlay.Close(); } catch (Exception ex) { AppLogger.Warn($"Failed to close overlay for '{deviceName}': {ex.Message}"); }
+            // Cancel before disposal because a closed WebView can no longer clear retained trail state.
+            overlay.EmitCancel();
+            if (ReferenceEquals(_activePointerOverlay, overlay))
+            {
+                ResetPrimaryPointerState();
+            }
+            if (ReferenceEquals(_lastTrailOverlay, overlay))
+            {
+                _lastTrailOverlay = null;
+            }
+
+            try
+            {
+                overlay.Close();
+            }
+            catch (Exception ex)
+            {
+                AppLogger.Warn($"Failed to close overlay for '{deviceName}': {ex.Message}");
+            }
             _overlays.Remove(deviceName);
         }
 
@@ -1014,7 +1088,7 @@ namespace BASpark
         {
             RebuildWindows(forceRebuild: true);
             SetupGlobalHooks();
-            UpdateTrailRefreshRate(ConfigManager.TrailRefreshRate);
+            UpdateInputSamplingRate(ConfigManager.InputSamplingRate);
             RefreshEnvironmentFilterState();
         }
 

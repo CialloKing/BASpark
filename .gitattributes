@@ -1,3 +1,6 @@
 *.iss linguist-vendored=true
 *.isl linguist-vendored=true
 *.py linguist-vendored=true
+
+# Preserve the reviewed vendor artifact byte-for-byte on Windows and Unix.
+src/Web/vendor/ba-click-fx.iife.js -text

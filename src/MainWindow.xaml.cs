@@ -4,6 +4,7 @@ using System.Drawing;
 using System.Globalization;
 using System.Linq;
 using System.Runtime.InteropServices;
+using System.Text.Json;
 using System.Windows;
 using System.Windows.Forms;
 using System.Windows.Interop;
@@ -80,11 +81,20 @@ namespace BASpark
         private bool? _lastReportedAlwaysTrail;
         private const string InputModeMouse = "mouse";
         private const string InputModeTouch = "touch";
+        private const string PrimaryRendererResourcePath = "Web/index.html";
+        private const string LegacyRendererResourcePath = "Web/index.legacy.html";
+        private const string RendererVendorResourcePath = "Web/vendor/ba-click-fx.iife.js";
+        private const string RendererAdapterResourcePath = "Web/fx-adapter.js";
 
         private System.Windows.Threading.DispatcherTimer? _topmostTimer;
+        private System.Windows.Threading.DispatcherTimer? _rendererReadyTimeoutTimer;
+        private EventHandler<CoreWebView2NavigationStartingEventArgs>? _navigationStartingHandler;
         private EventHandler<CoreWebView2NavigationCompletedEventArgs>? _navigationCompletedHandler;
         private EventHandler<CoreWebView2ProcessFailedEventArgs>? _processFailedHandler;
+        private EventHandler<CoreWebView2WebMessageReceivedEventArgs>? _webMessageReceivedHandler;
         private CoreWebView2? _coreWebView;
+        private ulong? _currentNavigationId;
+        private string? _rendererGeneration;
         private WinEventDelegate? _winEventDelegate;
         private IntPtr _winEventHook = IntPtr.Zero;
         private long _lastEnsureTopmostTicks;
@@ -94,6 +104,13 @@ namespace BASpark
         private bool _hiddenForExternalScreenshotCapture;
         private bool _hiddenByEnvironmentSuppression;
         private bool _overlayRuntimePaused;
+        private bool _rendererReady;
+        private bool _usingLegacyRenderer;
+        private int _inputSamplingRate = ConfigManager.DefaultInputSamplingRate;
+        private long _lastLegacyMoveTicks;
+        private bool _legacyFallbackAttempted;
+        private bool _processRecoveryPending;
+        private readonly WebViewUnresponsiveTracker _unresponsiveTracker = new();
 
         private delegate void WinEventDelegate(
             IntPtr hWinEventHook,
@@ -112,7 +129,7 @@ namespace BASpark
 
             InitializeComponent();
             webView.DefaultBackgroundColor = System.Drawing.Color.Transparent;
-            UpdateTrailRefreshRate(ConfigManager.TrailRefreshRate);
+            UpdateInputSamplingRate(ConfigManager.InputSamplingRate);
             _ = InitWebView();
         }
 
@@ -195,7 +212,9 @@ namespace BASpark
 
         public void UpdateColor(string color)
         {
-            ExecuteScript($"if(window.updateColor) window.updateColor('{color}');");
+            // JSON serialization keeps registry-backed color text from becoming executable script.
+            string colorJson = JsonSerializer.Serialize(color);
+            ExecuteScript($"if(window.updateColor) window.updateColor({colorJson});");
         }
 
         public void UpdateEffectSettings(double scale, double opacity, double trailSpeed, double clickSpeed)
@@ -208,9 +227,19 @@ namespace BASpark
             ExecuteScript($"if(window.updateEffectSettings) window.updateEffectSettings({scaleStr}, {opacityStr}, {trailStr}, {clickStr});");
         }
 
-        public void UpdateTrailRefreshRate(int hz)
+        public void UpdateInputSamplingRate(int rateHz)
         {
-            _ = hz;
+            _inputSamplingRate = ConfigManager.NormalizeInputSamplingRate(rateHz);
+            _lastLegacyMoveTicks = 0;
+            ExecuteScript(BuildInputSamplingRateScript(_inputSamplingRate));
+        }
+
+        internal static string BuildInputSamplingRateScript(int rateHz)
+        {
+            int normalizedRate = ConfigManager.NormalizeInputSamplingRate(rateHz);
+            return
+                "if(window.updateInputSamplingRate) " +
+                $"window.updateInputSamplingRate({normalizedRate.ToString(CultureInfo.InvariantCulture)});";
         }
 
         public void SetCurveDraw(bool enabled)
@@ -392,7 +421,10 @@ namespace BASpark
             try
             {
                 var env = await WebView2EnvironmentHolder.GetOrCreateAsync().ConfigureAwait(true);
-                if (_isClosing) return;
+                if (_isClosing)
+                {
+                    return;
+                }
 
                 if (webView.CoreWebView2 == null)
                 {
@@ -410,48 +442,27 @@ namespace BASpark
                     }
                 }
 
-                if (_isClosing || !TryGetCoreWebView2(out CoreWebView2? coreWebView)) return;
+                if (_isClosing || !TryGetCoreWebView2(out CoreWebView2? coreWebView))
+                {
+                    return;
+                }
 
+                DetachCoreWebViewEvents();
                 _coreWebView = coreWebView;
                 coreWebView.Settings.IsZoomControlEnabled = false;
                 coreWebView.Settings.AreDefaultContextMenusEnabled = false;
                 coreWebView.Settings.IsStatusBarEnabled = false;
 
-                if (_processFailedHandler == null)
-                {
-                    _processFailedHandler = OnWebViewProcessFailed;
-                    coreWebView.ProcessFailed += _processFailedHandler;
-                }
+                _processFailedHandler = OnWebViewProcessFailed;
+                _navigationStartingHandler = OnNavigationStarting;
+                _navigationCompletedHandler = OnNavigationCompleted;
+                _webMessageReceivedHandler = OnWebMessageReceived;
+                coreWebView.ProcessFailed += _processFailedHandler;
+                coreWebView.NavigationStarting += _navigationStartingHandler;
+                coreWebView.NavigationCompleted += _navigationCompletedHandler;
+                coreWebView.WebMessageReceived += _webMessageReceivedHandler;
 
-                if (_navigationCompletedHandler != null)
-                {
-                    try { coreWebView.NavigationCompleted -= _navigationCompletedHandler; } catch { /* best-effort */ }
-                }
-
-                var streamInfo = System.Windows.Application.GetResourceStream(new Uri("pack://application:,,,/Web/index.html"));
-                if (streamInfo != null)
-                {
-                    using var reader = new System.IO.StreamReader(streamInfo.Stream);
-                    string htmlContent = reader.ReadToEnd();
-                    coreWebView.NavigateToString(htmlContent);
-                    _navigationCompletedHandler = (s, e) =>
-                    {
-                        if (_isClosing) return;
-
-                        _lastReportedInputMode = null;
-                        _lastReportedAlwaysTrail = null;
-                        UpdateColor(ConfigManager.ParticleColor);
-                        ConfigManager.GetAnimationSpeedsForOverlay(out double trailSp, out double clickSp);
-                        UpdateEffectSettings(ConfigManager.EffectScale, ConfigManager.EffectOpacity, trailSp, clickSp);
-                        SyncInputContext(InputModeMouse);
-                        if (_overlayRuntimePaused)
-                        {
-                            ExecuteScript("if(window.setRenderingPaused) window.setRenderingPaused(true);");
-                            _ = TrySuspendWebViewAsync();
-                        }
-                    };
-                    coreWebView.NavigationCompleted += _navigationCompletedHandler;
-                }
+                NavigateCurrentRenderer(coreWebView);
             }
             catch (Exception ex) when (IsExpectedWebViewShutdownException(ex))
             {
@@ -459,6 +470,331 @@ namespace BASpark
             catch (Exception ex)
             {
                 System.Windows.MessageBox.Show(Localization.Format("WebView2_InitFailed", ex.Message));
+            }
+        }
+
+        private void NavigateCurrentRenderer(CoreWebView2 coreWebView)
+        {
+            StopRendererReadyTimeout();
+            _rendererReady = _usingLegacyRenderer;
+
+            if (_usingLegacyRenderer)
+            {
+                _rendererGeneration = null;
+                string legacyHtml = ReadResourceText(LegacyRendererResourcePath);
+                NavigateHtml(coreWebView, legacyHtml);
+                return;
+            }
+
+            _rendererGeneration = null;
+            try
+            {
+                string rendererGeneration = Guid.NewGuid().ToString("N");
+                string rendererHtml = BuildPrimaryRendererHtml(rendererGeneration);
+                _rendererGeneration = rendererGeneration;
+                NavigateHtml(coreWebView, rendererHtml);
+            }
+            catch (Exception ex) when (!IsExpectedWebViewShutdownException(ex))
+            {
+                AppLogger.Error(
+                    $"Failed to prepare BA click renderer on '{_screenDeviceName}'.",
+                    ex);
+                FallbackToLegacyRenderer("primary renderer resource preparation failed");
+                return;
+            }
+
+            // A renderer that cannot announce readiness must not leave an invisible overlay active.
+            if (!_rendererReady)
+            {
+                StartRendererReadyTimeout();
+            }
+        }
+
+        private static string BuildPrimaryRendererHtml(string rendererGeneration)
+        {
+            string generationJson = JsonSerializer.Serialize(rendererGeneration);
+            string adapterScript =
+                $"window.__basparkRendererGeneration = {generationJson};\n" +
+                ReadResourceText(RendererAdapterResourcePath);
+
+            return WebRendererDocumentBuilder.Build(
+                ReadResourceText(PrimaryRendererResourcePath),
+                ReadResourceText(RendererVendorResourcePath),
+                adapterScript);
+        }
+
+        private static string ReadResourceText(string resourcePath)
+        {
+            string assemblyName = typeof(MainWindow).Assembly.GetName().Name ?? "BASpark";
+            // Explicit component lookup also works when a diagnostic host references BASpark.
+            var resourceUri = new Uri(
+                $"pack://application:,,,/{assemblyName};component/{resourcePath}",
+                UriKind.Absolute);
+            var streamInfo = System.Windows.Application.GetResourceStream(resourceUri);
+            if (streamInfo == null)
+            {
+                throw new InvalidOperationException($"Embedded renderer resource '{resourcePath}' was not found.");
+            }
+
+            using var reader = new System.IO.StreamReader(streamInfo.Stream);
+            return reader.ReadToEnd();
+        }
+
+        private void NavigateHtml(CoreWebView2 coreWebView, string html)
+        {
+            // NavigationStarting assigns the authoritative ID before any matching completion event.
+            _currentNavigationId = null;
+            coreWebView.NavigateToString(html);
+        }
+
+        private void OnNavigationStarting(object? sender, CoreWebView2NavigationStartingEventArgs e)
+        {
+            if (_isClosing || !ReferenceEquals(sender, _coreWebView))
+            {
+                return;
+            }
+
+            _currentNavigationId = e.NavigationId;
+        }
+
+        private void OnNavigationCompleted(object? sender, CoreWebView2NavigationCompletedEventArgs e)
+        {
+            if (_isClosing ||
+                !ReferenceEquals(sender, _coreWebView) ||
+                _currentNavigationId != e.NavigationId)
+            {
+                return;
+            }
+
+            if (!e.IsSuccess)
+            {
+                if (!_usingLegacyRenderer)
+                {
+                    FallbackToLegacyRenderer($"navigation failed: {e.WebErrorStatus}");
+                }
+                else if (e.WebErrorStatus != CoreWebView2WebErrorStatus.OperationCanceled)
+                {
+                    AppLogger.Error(
+                        $"Legacy renderer navigation failed on '{_screenDeviceName}': {e.WebErrorStatus}.");
+                }
+                return;
+            }
+
+            // Navigation creates a new JS global object, so every page needs the complete host state.
+            _lastReportedInputMode = null;
+            _lastReportedAlwaysTrail = null;
+            UpdateColor(ConfigManager.ParticleColor);
+            ConfigManager.GetAnimationSpeedsForOverlay(out double trailSp, out double clickSp);
+            UpdateEffectSettings(ConfigManager.EffectScale, ConfigManager.EffectOpacity, trailSp, clickSp);
+            UpdateInputSamplingRate(ConfigManager.InputSamplingRate);
+            SyncInputContext(InputModeMouse);
+            if (_overlayRuntimePaused)
+            {
+                ExecuteScript("if(window.setRenderingPaused) window.setRenderingPaused(true);");
+                _ = TrySuspendWebViewAsync();
+            }
+        }
+
+        private void OnWebMessageReceived(object? sender, CoreWebView2WebMessageReceivedEventArgs e)
+        {
+            if (_isClosing || _usingLegacyRenderer || !ReferenceEquals(sender, _coreWebView))
+            {
+                return;
+            }
+
+            string messageJson;
+            try
+            {
+                messageJson = e.TryGetWebMessageAsString();
+            }
+            catch (ArgumentException)
+            {
+                // Accept object messages defensively while the documented adapter contract remains JSON text.
+                messageJson = e.WebMessageAsJson;
+            }
+
+            try
+            {
+                using JsonDocument document = JsonDocument.Parse(messageJson);
+                JsonElement root = document.RootElement;
+                if (root.ValueKind != JsonValueKind.Object)
+                {
+                    return;
+                }
+                if (!string.Equals(GetJsonString(root, "source"), "baspark-fx", StringComparison.Ordinal))
+                {
+                    return;
+                }
+                if (!string.Equals(
+                    GetJsonString(root, "generation"),
+                    _rendererGeneration,
+                    StringComparison.Ordinal))
+                {
+                    return;
+                }
+
+                string? type = GetJsonString(root, "type");
+                string requestedEffectBackend =
+                    GetJsonString(root, "requestedEffectBackend") ?? "unknown";
+                string resolvedEffectBackend =
+                    GetJsonString(root, "resolvedEffectBackend") ?? "unknown";
+                string requestedBloomBackend =
+                    GetJsonString(root, "requestedBloomBackend") ?? "unknown";
+                string resolvedBloomBackend =
+                    GetJsonString(root, "resolvedBloomBackend") ?? "unknown";
+                string requestedHostCompositing =
+                    GetJsonString(root, "requestedHostCompositing") ?? "unknown";
+                string resolvedHostCompositing =
+                    GetJsonString(root, "resolvedHostCompositing") ?? "unknown";
+                string hostCompositingSurface =
+                    GetJsonString(root, "hostCompositingSurface") ?? "unknown";
+                string? compositingWarning =
+                    GetJsonString(root, "compositingWarning");
+                string backend = GetJsonString(root, "backend") ??
+                    (resolvedEffectBackend == "webgl2"
+                        ? resolvedEffectBackend
+                        : resolvedBloomBackend);
+
+                if (string.Equals(type, "ready", StringComparison.Ordinal))
+                {
+                    bool firstReadyMessage = !_rendererReady;
+                    _rendererReady = true;
+                    _unresponsiveTracker.Reset();
+                    StopRendererReadyTimeout();
+                    if (firstReadyMessage)
+                    {
+                        AppLogger.Info(
+                            $"BA click renderer ready on '{_screenDeviceName}' " +
+                            $"(effective: {backend}, effect: {resolvedEffectBackend}, " +
+                            $"bloom: {resolvedBloomBackend}, host: " +
+                            $"{resolvedHostCompositing} on {hostCompositingSurface}" +
+                            $"{FormatCompositingWarning(compositingWarning)}).");
+                    }
+                    return;
+                }
+
+                if (string.Equals(type, "backend", StringComparison.Ordinal))
+                {
+                    AppLogger.Info(
+                        $"BA click renderer backend on '{_screenDeviceName}': " +
+                        $"effective {backend}; effect {resolvedEffectBackend} " +
+                        $"(requested {requestedEffectBackend}); bloom {resolvedBloomBackend} " +
+                        $"(requested {requestedBloomBackend}); host " +
+                        $"{resolvedHostCompositing} on {hostCompositingSurface} " +
+                        $"(requested {requestedHostCompositing})" +
+                        $"{FormatCompositingWarning(compositingWarning)}.");
+                    return;
+                }
+
+                if (string.Equals(type, "error", StringComparison.Ordinal))
+                {
+                    string phase = GetJsonString(root, "phase") ?? "unknown";
+                    string message = GetJsonString(root, "message") ?? "unspecified renderer error";
+                    AppLogger.Error(
+                        $"BA click renderer error on '{_screenDeviceName}' during '{phase}': {message}.");
+                    FallbackToLegacyRenderer($"renderer error during '{phase}'");
+                }
+            }
+            catch (JsonException ex)
+            {
+                AppLogger.Warn(
+                    $"Ignored malformed renderer message on '{_screenDeviceName}': {ex.Message}");
+            }
+        }
+
+        private static string? GetJsonString(JsonElement element, string propertyName)
+        {
+            if (!element.TryGetProperty(propertyName, out JsonElement value) ||
+                value.ValueKind != JsonValueKind.String)
+            {
+                return null;
+            }
+
+            return value.GetString();
+        }
+
+        private static string FormatCompositingWarning(string? warning)
+        {
+            return string.IsNullOrWhiteSpace(warning)
+                ? string.Empty
+                : $"; warning: {warning}";
+        }
+
+        private void StartRendererReadyTimeout()
+        {
+            StopRendererReadyTimeout();
+            _rendererReadyTimeoutTimer = new System.Windows.Threading.DispatcherTimer
+            {
+                Interval = TimeSpan.FromSeconds(2)
+            };
+            _rendererReadyTimeoutTimer.Tick += OnRendererReadyTimeout;
+            _rendererReadyTimeoutTimer.Start();
+        }
+
+        private void OnRendererReadyTimeout(object? sender, EventArgs e)
+        {
+            if (!ReferenceEquals(sender, _rendererReadyTimeoutTimer))
+            {
+                return;
+            }
+
+            StopRendererReadyTimeout();
+            if (_isClosing || _rendererReady || _usingLegacyRenderer)
+            {
+                return;
+            }
+
+            AppLogger.Warn(
+                $"BA click renderer ready timeout on '{_screenDeviceName}'; switching to legacy renderer.");
+            FallbackToLegacyRenderer("ready timeout");
+        }
+
+        private void StopRendererReadyTimeout()
+        {
+            if (_rendererReadyTimeoutTimer == null)
+            {
+                return;
+            }
+
+            _rendererReadyTimeoutTimer.Stop();
+            _rendererReadyTimeoutTimer.Tick -= OnRendererReadyTimeout;
+            _rendererReadyTimeoutTimer = null;
+        }
+
+        private void FallbackToLegacyRenderer(string reason)
+        {
+            if (_isClosing || _usingLegacyRenderer || _legacyFallbackAttempted)
+            {
+                return;
+            }
+
+            if (!TryGetCoreWebView2(out CoreWebView2? coreWebView))
+            {
+                return;
+            }
+
+            // The one-way fallback prevents a broken primary/legacy pair from navigating forever.
+            _legacyFallbackAttempted = true;
+            _usingLegacyRenderer = true;
+            _rendererReady = true;
+            _rendererGeneration = null;
+            StopRendererReadyTimeout();
+            AppLogger.Warn(
+                $"Falling back to legacy renderer on '{_screenDeviceName}' ({reason}).");
+
+            try
+            {
+                string legacyHtml = ReadResourceText(LegacyRendererResourcePath);
+                NavigateHtml(coreWebView, legacyHtml);
+            }
+            catch (Exception ex) when (IsExpectedWebViewShutdownException(ex))
+            {
+            }
+            catch (Exception ex) when (!IsExpectedWebViewShutdownException(ex))
+            {
+                AppLogger.Error(
+                    $"Failed to load legacy renderer on '{_screenDeviceName}'.",
+                    ex);
             }
         }
 
@@ -470,19 +806,172 @@ namespace BASpark
 
         private void OnWebViewProcessFailed(object? sender, CoreWebView2ProcessFailedEventArgs e)
         {
-            if (_isClosing) return;
+            if (_isClosing ||
+                sender is not CoreWebView2 failedCoreWebView ||
+                !ReferenceEquals(failedCoreWebView, _coreWebView))
+            {
+                return;
+            }
 
+            CoreWebView2ProcessFailedKind failureKind = e.ProcessFailedKind;
+            WebViewProcessRecoveryAction recoveryAction =
+                WebViewProcessFailurePolicy.GetRecoveryAction(failureKind);
+            if (failureKind == CoreWebView2ProcessFailedKind.RenderProcessUnresponsive)
+            {
+                bool shouldRecover = _unresponsiveTracker.Register(
+                    failedCoreWebView,
+                    DateTime.UtcNow.Ticks);
+                if (!shouldRecover)
+                {
+                    AppLogger.Warn(
+                        $"WebView2 renderer unresponsive on '{_screenDeviceName}' " +
+                        $"({_unresponsiveTracker.ConsecutiveReports}/3); waiting for runtime recovery.");
+                    return;
+                }
+
+                recoveryAction = WebViewProcessRecoveryAction.RecreateWebViewControl;
+            }
+            if (recoveryAction == WebViewProcessRecoveryAction.None)
+            {
+                AppLogger.Warn(
+                    $"WebView2 process event on '{_screenDeviceName}' ({failureKind}); runtime recovery is left intact.");
+                return;
+            }
+
+            if (_processRecoveryPending)
+            {
+                return;
+            }
+
+            _processRecoveryPending = true;
             Dispatcher.BeginInvoke(new Action(() =>
             {
-                if (_isClosing) return;
-                if (_coreWebView != null && _processFailedHandler != null)
+                try
                 {
-                    try { _coreWebView.ProcessFailed -= _processFailedHandler; } catch { /* ignore: event unsubscribe is best-effort */ }
+                    if (_isClosing || !ReferenceEquals(failedCoreWebView, _coreWebView))
+                    {
+                        return;
+                    }
+
+                    AppLogger.Warn(
+                        $"WebView2 process failed on '{_screenDeviceName}' ({failureKind}); recovering renderer.");
+                    if (recoveryAction == WebViewProcessRecoveryAction.RecreateWebViewControl)
+                    {
+                        RecreateWebViewControl();
+                    }
+                    else
+                    {
+                        NavigateCurrentRenderer(failedCoreWebView);
+                    }
                 }
-                _processFailedHandler = null;
-                _coreWebView = null;
-                _ = InitWebView();
+                catch (Exception ex) when (IsExpectedWebViewShutdownException(ex))
+                {
+                    // Process-failure recovery races with shutdown and must never escape the UI dispatcher.
+                    if (!_isClosing)
+                    {
+                        AppLogger.Warn(
+                            $"WebView2 recovery was interrupted on '{_screenDeviceName}': {ex.Message}");
+                    }
+                }
+                catch (Exception ex)
+                {
+                    AppLogger.Error(
+                        $"WebView2 recovery failed on '{_screenDeviceName}'.",
+                        ex);
+                }
+                finally
+                {
+                    _processRecoveryPending = false;
+                }
             }));
+        }
+
+        private void RecreateWebViewControl()
+        {
+            StopRendererReadyTimeout();
+            // The browser process is already disconnected; Dispose owns native event cleanup.
+            ClearCoreWebViewEventState();
+            _coreWebView = null;
+
+            Microsoft.Web.WebView2.Wpf.WebView2 oldWebView = webView;
+            webViewHost.Children.Remove(oldWebView);
+            UnregisterName("webView");
+            oldWebView.Dispose();
+
+            var replacementWebView = new Microsoft.Web.WebView2.Wpf.WebView2
+            {
+                Name = "webView",
+                DefaultBackgroundColor = System.Drawing.Color.Transparent
+            };
+
+            RegisterName("webView", replacementWebView);
+            webView = replacementWebView;
+            webViewHost.Children.Add(replacementWebView);
+            _ = InitWebView();
+        }
+
+        private void DetachCoreWebViewEvents()
+        {
+            CoreWebView2? coreWebView = _coreWebView;
+            if (coreWebView != null)
+            {
+                if (_navigationCompletedHandler != null)
+                {
+                    try
+                    {
+                        coreWebView.NavigationCompleted -= _navigationCompletedHandler;
+                    }
+                    catch (Exception ex) when (IsExpectedWebViewShutdownException(ex))
+                    {
+                    }
+                }
+
+                if (_navigationStartingHandler != null)
+                {
+                    try
+                    {
+                        coreWebView.NavigationStarting -= _navigationStartingHandler;
+                    }
+                    catch (Exception ex) when (IsExpectedWebViewShutdownException(ex))
+                    {
+                    }
+                }
+
+                if (_processFailedHandler != null)
+                {
+                    try
+                    {
+                        coreWebView.ProcessFailed -= _processFailedHandler;
+                    }
+                    catch (Exception ex) when (IsExpectedWebViewShutdownException(ex))
+                    {
+                    }
+                }
+
+                if (_webMessageReceivedHandler != null)
+                {
+                    try
+                    {
+                        coreWebView.WebMessageReceived -= _webMessageReceivedHandler;
+                    }
+                    catch (Exception ex) when (IsExpectedWebViewShutdownException(ex))
+                    {
+                    }
+                }
+            }
+
+            ClearCoreWebViewEventState();
+        }
+
+        private void ClearCoreWebViewEventState()
+        {
+            _navigationStartingHandler = null;
+            _navigationCompletedHandler = null;
+            _processFailedHandler = null;
+            _webMessageReceivedHandler = null;
+            _currentNavigationId = null;
+            _rendererGeneration = null;
+            _unresponsiveTracker.Reset();
         }
 
         private static bool IsCursorVisible()
@@ -599,6 +1088,7 @@ namespace BASpark
 
         public void EmitMove(int x, int y, bool touchLike)
         {
+            if (_usingLegacyRenderer && !ShouldDispatchLegacyMove()) return;
             if (!TryConvertScreenToOverlayPoint(x, y, out System.Windows.Point clientPoint)) return;
             string inputMode = touchLike ? InputModeTouch : InputModeMouse;
             string px = FormatCoordinate(clientPoint.X);
@@ -606,10 +1096,37 @@ namespace BASpark
             ExecuteWithInputContext(inputMode, $"if(window.externalMove) window.externalMove({px}, {py});");
         }
 
+        private bool ShouldDispatchLegacyMove()
+        {
+            // 旧渲染器没有输入采样 API，仅在回退路径保留等价的宿主限频。
+            if (_inputSamplingRate == 0)
+            {
+                return true;
+            }
+
+            long currentTicks = DateTime.UtcNow.Ticks;
+            long intervalTicks = TimeSpan.FromSeconds(1.0 / _inputSamplingRate).Ticks;
+            if (currentTicks - _lastLegacyMoveTicks < intervalTicks)
+            {
+                return false;
+            }
+
+            _lastLegacyMoveTicks = currentTicks;
+            return true;
+        }
+
         public void EmitUp(bool touchLike)
         {
             string inputMode = touchLike ? InputModeTouch : InputModeMouse;
             ExecuteWithInputContext(inputMode, "if(window.externalUp) window.externalUp();");
+        }
+
+        public void EmitCancel()
+        {
+            ExecuteScript(
+                "if(window.externalCancel){window.externalCancel();}" +
+                "else if(window.spark&&window.spark.clearEffects){window.spark.clearEffects();}" +
+                "else if(window.externalUp){window.externalUp();}");
         }
 
         private void UpdateOverlayBounds()
@@ -672,6 +1189,7 @@ namespace BASpark
         protected override void OnClosing(System.ComponentModel.CancelEventArgs e)
         {
             _isClosing = true;
+            StopRendererReadyTimeout();
             base.OnClosing(e);
         }
 
@@ -685,32 +1203,8 @@ namespace BASpark
                 _topmostTimer = null;
             }
 
-            if (_coreWebView != null)
-            {
-                if (_navigationCompletedHandler != null)
-                {
-                    try
-                    {
-                        _coreWebView.NavigationCompleted -= _navigationCompletedHandler;
-                    }
-                    catch (Exception ex) when (IsExpectedWebViewShutdownException(ex))
-                    {
-                    }
-                    _navigationCompletedHandler = null;
-                }
-
-                if (_processFailedHandler != null)
-                {
-                    try
-                    {
-                        _coreWebView.ProcessFailed -= _processFailedHandler;
-                    }
-                    catch (Exception ex) when (IsExpectedWebViewShutdownException(ex))
-                    {
-                    }
-                    _processFailedHandler = null;
-                }
-            }
+            StopRendererReadyTimeout();
+            DetachCoreWebViewEvents();
             _coreWebView = null;
 
             if (_winEventHook != IntPtr.Zero)

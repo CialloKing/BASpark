@@ -27,7 +27,7 @@ features:
   - title: 🧠 Smart Environment Filter
     details: Context-aware detection that auto-pauses in full-screen games/videos. Supports customizable Blacklist and Whitelist modes.
   - title: 🎨 Precise Visual Tuning
-    details: Fully customize scale ratio, opacity, animation speed, and trail refresh rates (up to 240Hz) via sliders or precise inputs.
+    details: Fully customize scale, opacity, animation speed, theme color, and input sampling rates from unlimited through 1000Hz.
   - title: 🖥️ Multi-Screen Management
     details: Intelligent monitor hardware ID memory. Independently toggle effects for each screen with dynamic topology refresh.
   - title: 🌐 Global Optimization

@@ -34,7 +34,21 @@
   <ItemGroup>
     <Resource Include="app.ico" />
     <Resource Include="Web\index.html" />
+    <Resource Include="Web\index.legacy.html" />
+    <Resource Include="Web\fx-adapter.js" />
+    <Resource Include="Web\vendor\ba-click-fx.iife.js" />
   </ItemGroup>
 
+  <ItemGroup>
+    <None Update="licenses\ba-click-fx\LICENSE"
+          CopyToOutputDirectory="PreserveNewest"
+          CopyToPublishDirectory="PreserveNewest" />
+    <None Update="licenses\ba-click-fx\THIRD_PARTY_NOTICES.md"
+          CopyToOutputDirectory="PreserveNewest"
+          CopyToPublishDirectory="PreserveNewest" />
+    <None Update="licenses\ba-click-fx\VERSION.txt"
+          CopyToOutputDirectory="PreserveNewest"
+          CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
 
 </Project>

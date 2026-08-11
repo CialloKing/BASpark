@@ -15,7 +15,7 @@ namespace BASpark
         EffectScale = 1 << 0,
         EffectOpacity = 1 << 1,
         UnifiedAnimationSpeed = 1 << 2,
-        TrailRefreshRate = 1 << 3,
+        InputSamplingRate = 1 << 3,
         ParticleColor = 1 << 4,
         TrailAnimationSpeed = 1 << 5,
         ClickAnimationSpeed = 1 << 6
@@ -61,6 +61,9 @@ namespace BASpark
     public static class ConfigManager
     {
         private const string RegPath = @"Software\BASpark";
+        public const int DefaultInputSamplingRate = 40;
+        public const int MinimumInputSamplingRate = 0;
+        public const int MaximumInputSamplingRate = 1000;
 
         public static string ParticleColor { get; set; } = "45,175,255";
         public static bool IsEffectEnabled { get; set; } = true;
@@ -79,7 +82,7 @@ namespace BASpark
         public static bool ApplyCurveDraw { get; set; } = false;
         public static double TrailAnimationSpeed { get; set; } = 1.0;
         public static double ClickAnimationSpeed { get; set; } = 1.0;
-        public static int TrailRefreshRate { get; set; } = 40;
+        public static int InputSamplingRate { get; set; } = DefaultInputSamplingRate;
         public static bool EnableEnvironmentFilter { get; set; } = false;
         public static bool HideInFullscreen { get; set; } = true;
         public static bool ShowEffectOnDesktop { get; set; } = true;
@@ -141,7 +144,13 @@ namespace BASpark
                         ApplyCurveDraw = Convert.ToBoolean(key.GetValue("ApplyCurveDraw", false));
                         TrailAnimationSpeed = Math.Clamp(Convert.ToDouble(key.GetValue("TrailAnimationSpeed", EffectSpeed), CultureInfo.InvariantCulture), 0.2, 3.0);
                         ClickAnimationSpeed = Math.Clamp(Convert.ToDouble(key.GetValue("ClickAnimationSpeed", EffectSpeed), CultureInfo.InvariantCulture), 0.2, 3.0);
-                        TrailRefreshRate = Math.Clamp(Convert.ToInt32(key.GetValue("TrailRefreshRate", 40), CultureInfo.InvariantCulture), 10, 240);
+                        object legacyInputSamplingRate = key.GetValue(
+                            "TrailRefreshRate",
+                            DefaultInputSamplingRate) ?? DefaultInputSamplingRate;
+                        InputSamplingRate = NormalizeInputSamplingRate(
+                            Convert.ToInt32(
+                                key.GetValue("InputSamplingRate", legacyInputSamplingRate),
+                                CultureInfo.InvariantCulture));
                         EnableEnvironmentFilter = Convert.ToBoolean(key.GetValue("EnableEnvironmentFilter", false));
                         HideInFullscreen = Convert.ToBoolean(key.GetValue("HideInFullscreen", true));
                         ShowEffectOnDesktop = Convert.ToBoolean(key.GetValue("ShowEffectOnDesktop", true));
@@ -262,6 +271,14 @@ namespace BASpark
             return NetworkRegionOption.Auto;
         }
 
+        public static int NormalizeInputSamplingRate(int rateHz)
+        {
+            return Math.Clamp(
+                rateHz,
+                MinimumInputSamplingRate,
+                MaximumInputSamplingRate);
+        }
+
         public static void GetAnimationSpeedsForOverlay(out double trailSpeed, out double clickSpeed)
         {
             if (UseLinkedAnimationSpeed)
@@ -340,9 +357,9 @@ namespace BASpark
                 Save("ClickAnimationSpeed", 1.0);
             }
 
-            if (flags.HasFlag(VisualAppearanceResetFlags.TrailRefreshRate))
+            if (flags.HasFlag(VisualAppearanceResetFlags.InputSamplingRate))
             {
-                Save("TrailRefreshRate", 40);
+                Save("InputSamplingRate", DefaultInputSamplingRate);
             }
 
             if (flags.HasFlag(VisualAppearanceResetFlags.ParticleColor))
@@ -576,7 +593,7 @@ namespace BASpark
                     ApplyCurveDraw = false;
                     TrailAnimationSpeed = 1.0;
                     ClickAnimationSpeed = 1.0;
-                    TrailRefreshRate = 40;
+                    InputSamplingRate = DefaultInputSamplingRate;
                     EnableEnvironmentFilter = false;
                     HideInFullscreen = true;
                     ShowEffectOnDesktop = true;

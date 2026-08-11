@@ -98,7 +98,8 @@ namespace BASpark
             w.TxtAnimSpeed.Text = Localization.Get("Visual_AnimSpeed");
             w.TxtTrailAnimSpeed.Text = Localization.Get("Visual_TrailAnimSpeed");
             w.TxtClickAnimSpeed.Text = Localization.Get("Visual_ClickAnimSpeed");
-            w.TxtTrailRefresh.Text = Localization.Get("Visual_TrailRefresh");
+            w.TxtInputSamplingRate.Text = Localization.Get("Visual_InputSamplingRate");
+            w.TxtInputSamplingRateHint.Text = Localization.Get("Visual_InputSamplingRateHint");
             w.TxtEffectColor.Text = Localization.Get("Visual_Color");
             w.BtnPickColor.Content = Localization.Get("Visual_ChangeColor");
 
