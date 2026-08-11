@@ -4,6 +4,7 @@
 
     const POINTER_ID = 1;
     const DEFAULT_COLOR = '#2dafff';
+    const DEFAULT_INPUT_SAMPLING_RATE = 40;
     const HOST_GENERATION =
         typeof window.__basparkRendererGeneration === 'string'
             ? window.__basparkRendererGeneration
@@ -29,6 +30,7 @@
         effectiveAlwaysTrail: false,
         activePointerKind: null,
         color: DEFAULT_COLOR,
+        inputSamplingRate: DEFAULT_INPUT_SAMPLING_RATE,
         settings:
         {
             ...DEFAULT_SETTINGS,
@@ -244,6 +246,25 @@
         return clamp(numeric, 0.2, 3);
     }
 
+    function parseInputSamplingRate(value)
+    {
+        const numeric = Number(value);
+
+        if (
+            numeric !== 0 &&
+            (
+                !Number.isFinite(numeric) ||
+                numeric < 1 ||
+                numeric > 1000
+            )
+        )
+        {
+            return null;
+        }
+
+        return numeric;
+    }
+
     window.externalBoom = function (percentX, percentY)
     {
         if (state.paused || !state.fx)
@@ -451,6 +472,29 @@
         });
     };
 
+    window.updateInputSamplingRate = function (rateHz)
+    {
+        const rate = parseInputSamplingRate(rateHz);
+
+        if (rate === null)
+        {
+            console.warn('[BASpark FX] 忽略非法输入采样率:', rateHz);
+            return false;
+        }
+
+        state.inputSamplingRate = rate;
+
+        if (!state.fx)
+        {
+            return true;
+        }
+
+        return invokeFx('updateInputSamplingRate', function ()
+        {
+            return state.fx.setInputSamplingRate(rate);
+        });
+    };
+
     window.updateEffectSettings = function (
         scale,
         opacity,
@@ -577,6 +621,7 @@
                     // 再以浅色背景补偿和 Alpha 上限提高未知背景上的可见性。
                     effectBackend: 'webgl2',
                     bloomBackend: 'webgl2',
+                    inputSamplingRate: state.inputSamplingRate,
                     outputCompositing: 'browser-overlay',
                     overlayAlphaPolicy: 'visual-max',
                     overlayColorCompensation: 'bright-core',

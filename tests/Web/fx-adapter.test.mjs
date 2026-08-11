@@ -21,6 +21,7 @@ function createHarness(options = {})
     pointerMove: [],
     pointerUp: [],
     setCompositingReference: [],
+    setInputSamplingRate: [],
     setPaused: [],
     setThemeColor: [],
     updateConfig: [],
@@ -119,6 +120,13 @@ function createHarness(options = {})
       calls.setThemeColor.push(color);
     }
 
+    setInputSamplingRate(rateHz)
+    {
+      calls.setInputSamplingRate.push(rateHz);
+      this.config.inputSamplingRate = rateHz;
+      return true;
+    }
+
     updateConfig(config)
     {
       calls.updateConfig.push(config);
@@ -191,6 +199,7 @@ test('initializes the vendored renderer in manual WebView2 mode', () =>
   assert.equal(harness.fx.config.inputSource, 'manual');
   assert.equal(harness.fx.config.effectBackend, 'webgl2');
   assert.equal(harness.fx.config.bloomBackend, 'webgl2');
+  assert.equal(harness.fx.config.inputSamplingRate, 40);
   assert.equal(harness.fx.config.outputCompositing, 'browser-overlay');
   assert.equal(harness.fx.config.overlayAlphaPolicy, 'visual-max');
   assert.equal(harness.fx.config.overlayColorCompensation, 'bright-core');
@@ -232,6 +241,11 @@ test('maps normalized host input and BASpark settings to BAClickFX', () =>
   harness.window.updateColor('45,175,255');
   assert.equal(harness.calls.setThemeColor.at(-1), '#2dafff');
 
+  assert.equal(harness.window.updateInputSamplingRate(60), true);
+  assert.equal(harness.window.updateInputSamplingRate(0), true);
+  assert.deepEqual(harness.calls.setInputSamplingRate, [60, 0]);
+  assert.equal(harness.fx.config.inputSamplingRate, 0);
+
   harness.window.setInputContext('mouse', true);
   assert.equal(harness.calls.updateConfig.at(-1).trailAlways, true);
 
@@ -269,6 +283,18 @@ test('keeps the current color when host configuration is invalid', () =>
     harness.calls.messages.filter((message) => message.type === 'error').length,
     errorMessageCount,
   );
+});
+
+test('keeps the current sampling rate when host configuration is invalid', () =>
+{
+  const harness = createHarness();
+
+  assert.equal(harness.window.updateInputSamplingRate(-1), false);
+  assert.equal(harness.window.updateInputSamplingRate(0.5), false);
+  assert.equal(harness.window.updateInputSamplingRate(1001), false);
+  assert.equal(harness.window.updateInputSamplingRate('invalid'), false);
+  assert.equal(harness.calls.setInputSamplingRate.length, 0);
+  assert.equal(harness.fx.config.inputSamplingRate, 40);
 });
 
 test('disables always-trail for touch and blocks input while paused', () =>
