@@ -6,20 +6,36 @@ import test from 'node:test';
 import vm from 'node:vm';
 
 const expectedSha256 =
-  '038A80308F04517BFF69C0A8AB37776F1D0412D80E455E8508E21F51FA7B3839';
+  'F198EEF9B29AE84D7B11B275DC0877D6BDD6C4D79035DDD200943CA8D5C3B764';
 const vendorPath = new URL(
   '../../src/Web/vendor/ba-click-fx.iife.js',
   import.meta.url,
 );
 const adapterPath = new URL('../../src/Web/fx-adapter.js', import.meta.url);
 const templatePath = new URL('../../src/Web/index.html', import.meta.url);
+const versionPath = new URL(
+  '../../src/licenses/ba-click-fx/VERSION.txt',
+  import.meta.url,
+);
 
-test('vendored artifact matches the reviewed v1.2.23 build', () =>
+test('vendored artifact matches the reviewed v1.2.25 build', () =>
 {
   const bytes = readFileSync(vendorPath);
   const actual = createHash('sha256').update(bytes).digest('hex').toUpperCase();
 
   assert.equal(actual, expectedSha256);
+});
+
+test('vendored metadata identifies the exact reviewed artifact', () =>
+{
+  const metadata = readFileSync(versionPath, 'utf8');
+
+  assert.match(metadata, /^Version: v1\.2\.25$/m);
+  assert.match(
+    metadata,
+    /^Commit: cbefdb849a96dae8d418547cf8cc90ab230029e3$/m,
+  );
+  assert.match(metadata, new RegExp(`^SHA256: ${expectedSha256}$`, 'm'));
 });
 
 test('vendored IIFE exposes every host API required by BASpark', () =>
@@ -50,6 +66,8 @@ test('vendored IIFE exposes every host API required by BASpark', () =>
       overlayAlphaLimit: 0.85,
       hostCompositing: 'source-over',
       hostCompositingSurface: 'transparent-window',
+      themeColorMode: 'relative-oklch',
+      inputSamplingRate: 40,
     },
   );
 
@@ -59,6 +77,8 @@ test('vendored IIFE exposes every host API required by BASpark', () =>
   assert.equal(lightBackgroundConfig.overlayAlphaLimit, 0.85);
   assert.equal(lightBackgroundConfig.hostCompositing, 'source-over');
   assert.equal(lightBackgroundConfig.hostCompositingSurface, 'transparent-window');
+  assert.equal(lightBackgroundConfig.themeColorMode, 'relative-oklch');
+  assert.equal(lightBackgroundConfig.inputSamplingRate, 40);
 
   const prototype = context.BAClickFX.BAClickFX.prototype;
   for (const method of [
@@ -70,6 +90,8 @@ test('vendored IIFE exposes every host API required by BASpark', () =>
     'setPaused',
     'updateConfig',
     'setThemeColor',
+    'setThemeColorMode',
+    'setInputSamplingRate',
     'destroy',
   ])
   {
