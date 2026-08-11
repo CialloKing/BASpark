@@ -583,6 +583,9 @@
                     overlayAlphaLimit: 0.85,
                     hostCompositing: 'source-over',
                     hostCompositingSurface: 'transparent-window',
+                    // 公共库为兼容旧像素默认 hue-only；BASpark 的取色器
+                    // 明确使用上游推荐的相对 OKLCH 完整颜色映射。
+                    themeColorMode: 'relative-oklch',
                     isolatedCompositing: false,
                     lightBackgroundContrastAlpha: 0,
                     maxDpr: 2,

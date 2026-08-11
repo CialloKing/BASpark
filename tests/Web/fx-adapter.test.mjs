@@ -197,6 +197,7 @@ test('initializes the vendored renderer in manual WebView2 mode', () =>
   assert.equal(harness.fx.config.overlayAlphaLimit, 0.85);
   assert.equal(harness.fx.config.hostCompositing, 'source-over');
   assert.equal(harness.fx.config.hostCompositingSurface, 'transparent-window');
+  assert.equal(harness.fx.config.themeColorMode, 'relative-oklch');
   assert.equal(harness.fx.config.isolatedCompositing, false);
   assert.equal(harness.fx.config.lightBackgroundContrastAlpha, 0);
   assert.equal(harness.fx.config.maxDpr, 2);
