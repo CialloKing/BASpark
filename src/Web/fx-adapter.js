@@ -248,7 +248,12 @@
 
     function parseInputSamplingRate(value)
     {
-        const numeric = Number(value);
+        if (typeof value !== 'number')
+        {
+            return null;
+        }
+
+        const numeric = value;
 
         if (
             numeric !== 0 &&

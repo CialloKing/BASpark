@@ -242,8 +242,9 @@ test('maps normalized host input and BASpark settings to BAClickFX', () =>
   assert.equal(harness.calls.setThemeColor.at(-1), '#2dafff');
 
   assert.equal(harness.window.updateInputSamplingRate(60), true);
+  assert.equal(harness.window.updateInputSamplingRate(1.5), true);
   assert.equal(harness.window.updateInputSamplingRate(0), true);
-  assert.deepEqual(harness.calls.setInputSamplingRate, [60, 0]);
+  assert.deepEqual(harness.calls.setInputSamplingRate, [60, 1.5, 0]);
   assert.equal(harness.fx.config.inputSamplingRate, 0);
 
   harness.window.setInputContext('mouse', true);
@@ -292,6 +293,7 @@ test('keeps the current sampling rate when host configuration is invalid', () =>
   assert.equal(harness.window.updateInputSamplingRate(-1), false);
   assert.equal(harness.window.updateInputSamplingRate(0.5), false);
   assert.equal(harness.window.updateInputSamplingRate(1001), false);
+  assert.equal(harness.window.updateInputSamplingRate('40'), false);
   assert.equal(harness.window.updateInputSamplingRate('invalid'), false);
   assert.equal(harness.calls.setInputSamplingRate.length, 0);
   assert.equal(harness.fx.config.inputSamplingRate, 40);
