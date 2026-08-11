@@ -52,10 +52,10 @@ In the "Visual Performance" sub-settings menu, you can adjust the following para
 * **Global Opacity**: Adjusts the overall visual intensity and transparency of the effects.
 * **Animation Speed**: Adjusts the overall playback speed of the effects.
 * **Speed Synchronization**: Enabled by default. Unchecking this allows you to independently adjust "Click Speed" and "Trail Speed".
-* **Trail Refresh Rate**: Supports up to 240Hz. Higher values offer smoother paths but consume relatively more system resources.
+* **Input Sampling Rate Limit**: Accepts `0` (unlimited) or `1`–`1000Hz`, with a default of `40Hz`. Lower rates retain fewer pointer samples and create more angular paths; this setting is independent of animation speed and rendering frame rate.
 
 ### Theme Colors
-Click the **"Change Color"** button to bring up the color palette and customize the core color of the particles.
+Click the **"Change Color"** button to bring up the color palette and customize the effect theme. BASpark uses the recommended relative OKLCH mapping so hue, chroma, and perceptual lightness are adjusted before HDR and Bloom processing.
 
 ### Reset to Default
 Click the **"Restore Default Settings"** button to selectively reset items to their default values.
