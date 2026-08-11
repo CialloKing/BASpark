@@ -83,9 +83,7 @@ namespace BASpark
         private IKeyboardMouseEvents? _globalHook;
         private MainWindow? _activePointerOverlay;
         private MainWindow? _lastTrailOverlay;
-        private long _lastMoveTicks;
         private long _lastClickTicks;
-        private long _moveIntervalTicks = 250000;
         private bool _isPrimaryPointerDown;
         private bool _isTouchLikeInput;
         private bool _isSuppressedByEnvironment;
@@ -125,7 +123,7 @@ namespace BASpark
         {
             RebuildWindows(forceRebuild: true);
             SetupGlobalHooks();
-            UpdateTrailRefreshRate(ConfigManager.TrailRefreshRate);
+            UpdateInputSamplingRate(ConfigManager.InputSamplingRate);
             RefreshEnvironmentFilterState();
             SystemEvents.DisplaySettingsChanged += HandleDisplaySettingsChanged;
             SystemEvents.PowerModeChanged += HandlePowerModeChanged;
@@ -135,11 +133,12 @@ namespace BASpark
         public void UpdateColor(string color) => ForEachOverlay(w => w.UpdateColor(color));
         public void UpdateEffectSettings(double scale, double opacity, double trailSpeed, double clickSpeed) =>
             ForEachOverlay(w => w.UpdateEffectSettings(scale, opacity, trailSpeed, clickSpeed));
-        public void UpdateTrailRefreshRate(int hz)
+        public void UpdateInputSamplingRate(int rateHz)
         {
-            hz = Math.Clamp(hz, 10, 240);
-            _moveIntervalTicks = TimeSpan.FromSeconds(1.0 / hz).Ticks;
-            ForEachOverlay(w => w.UpdateTrailRefreshRate(hz));
+            int normalizedRate = ConfigManager.NormalizeInputSamplingRate(rateHz);
+            // ba-click-fx 使用未缩放的真实输入时间采样。宿主只负责转发，
+            // 避免 C# 与 WebView2 按同一频率连续丢点而让实际频率再次降低。
+            ForEachOverlay(w => w.UpdateInputSamplingRate(normalizedRate));
         }
         public void UpdateTouchMode(bool enabled) => ForEachOverlay(w => w.UpdateTouchMode(enabled));
         public void UpdateScreenshotCompatibilityMode(bool enabled)
@@ -597,13 +596,6 @@ namespace BASpark
                 SwitchAlwaysTrailOverlay(null);
                 return;
             }
-
-            long currentTicks = DateTime.Now.Ticks;
-            if (currentTicks - _lastMoveTicks < _moveIntervalTicks)
-            {
-                return;
-            }
-            _lastMoveTicks = currentTicks;
 
             if (!TryGetPhysicalCursorPosition(out int cursorX, out int cursorY))
             {
@@ -1096,7 +1088,7 @@ namespace BASpark
         {
             RebuildWindows(forceRebuild: true);
             SetupGlobalHooks();
-            UpdateTrailRefreshRate(ConfigManager.TrailRefreshRate);
+            UpdateInputSamplingRate(ConfigManager.InputSamplingRate);
             RefreshEnvironmentFilterState();
         }
 

@@ -547,10 +547,10 @@ Download now?</value>
     <data name="VisualReset_Scale_Sub" xml:space="preserve">
       <value>Default 1.50 ×</value>
     </data>
-    <data name="VisualReset_TrailRefresh" xml:space="preserve">
-      <value>Trail refresh rate</value>
+    <data name="VisualReset_InputSamplingRate" xml:space="preserve">
+      <value>Input sampling rate limit</value>
     </data>
-    <data name="VisualReset_TrailRefresh_Sub" xml:space="preserve">
+    <data name="VisualReset_InputSamplingRate_Sub" xml:space="preserve">
       <value>Default 40 Hz</value>
     </data>
     <data name="VisualReset_TrailSpeed" xml:space="preserve">
@@ -584,13 +584,13 @@ Download now?</value>
       <value>Use same animation speed for trail and click</value>
     </data>
     <data name="Visual_LinkedSpeedHint" xml:space="preserve">
-      <value>When off, trail and click speeds are independent of trail refresh rate below.</value>
+      <value>When off, trail and click speeds are independent of the input sampling rate below.</value>
     </data>
     <data name="Visual_CurveDraw" xml:space="preserve">
       <value>Use curved trail lines</value>
     </data>
     <data name="Visual_CurveDrawHint" xml:space="preserve">
-      <value>Recommended for 60Hz and above</value>
+      <value>Recommended at input sampling rates of 60 Hz or higher</value>
     </data>
     <data name="Visual_Opacity" xml:space="preserve">
       <value>Global opacity</value>
@@ -607,8 +607,11 @@ Download now?</value>
     <data name="Visual_TrailAnimSpeed" xml:space="preserve">
       <value>Trail animation speed</value>
     </data>
-    <data name="Visual_TrailRefresh" xml:space="preserve">
-      <value>Trail refresh rate</value>
+    <data name="Visual_InputSamplingRate" xml:space="preserve">
+      <value>Input sampling rate limit</value>
+    </data>
+    <data name="Visual_InputSamplingRateHint" xml:space="preserve">
+      <value>0 means unlimited; lower rates produce more angular trail paths.</value>
     </data>
     <data name="WebView2_InitFailed" xml:space="preserve">
       <value>WebView2 initialization failed: {0}</value>

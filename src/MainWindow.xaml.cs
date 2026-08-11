@@ -106,6 +106,8 @@ namespace BASpark
         private bool _overlayRuntimePaused;
         private bool _rendererReady;
         private bool _usingLegacyRenderer;
+        private int _inputSamplingRate = ConfigManager.DefaultInputSamplingRate;
+        private long _lastLegacyMoveTicks;
         private bool _legacyFallbackAttempted;
         private bool _processRecoveryPending;
         private readonly WebViewUnresponsiveTracker _unresponsiveTracker = new();
@@ -127,7 +129,7 @@ namespace BASpark
 
             InitializeComponent();
             webView.DefaultBackgroundColor = System.Drawing.Color.Transparent;
-            UpdateTrailRefreshRate(ConfigManager.TrailRefreshRate);
+            UpdateInputSamplingRate(ConfigManager.InputSamplingRate);
             _ = InitWebView();
         }
 
@@ -225,9 +227,19 @@ namespace BASpark
             ExecuteScript($"if(window.updateEffectSettings) window.updateEffectSettings({scaleStr}, {opacityStr}, {trailStr}, {clickStr});");
         }
 
-        public void UpdateTrailRefreshRate(int hz)
+        public void UpdateInputSamplingRate(int rateHz)
         {
-            _ = hz;
+            _inputSamplingRate = ConfigManager.NormalizeInputSamplingRate(rateHz);
+            _lastLegacyMoveTicks = 0;
+            ExecuteScript(BuildInputSamplingRateScript(_inputSamplingRate));
+        }
+
+        internal static string BuildInputSamplingRateScript(int rateHz)
+        {
+            int normalizedRate = ConfigManager.NormalizeInputSamplingRate(rateHz);
+            return
+                "if(window.updateInputSamplingRate) " +
+                $"window.updateInputSamplingRate({normalizedRate.ToString(CultureInfo.InvariantCulture)});";
         }
 
         public void SetCurveDraw(bool enabled)
@@ -574,6 +586,7 @@ namespace BASpark
             UpdateColor(ConfigManager.ParticleColor);
             ConfigManager.GetAnimationSpeedsForOverlay(out double trailSp, out double clickSp);
             UpdateEffectSettings(ConfigManager.EffectScale, ConfigManager.EffectOpacity, trailSp, clickSp);
+            UpdateInputSamplingRate(ConfigManager.InputSamplingRate);
             SyncInputContext(InputModeMouse);
             if (_overlayRuntimePaused)
             {
@@ -1075,11 +1088,31 @@ namespace BASpark
 
         public void EmitMove(int x, int y, bool touchLike)
         {
+            if (_usingLegacyRenderer && !ShouldDispatchLegacyMove()) return;
             if (!TryConvertScreenToOverlayPoint(x, y, out System.Windows.Point clientPoint)) return;
             string inputMode = touchLike ? InputModeTouch : InputModeMouse;
             string px = FormatCoordinate(clientPoint.X);
             string py = FormatCoordinate(clientPoint.Y);
             ExecuteWithInputContext(inputMode, $"if(window.externalMove) window.externalMove({px}, {py});");
+        }
+
+        private bool ShouldDispatchLegacyMove()
+        {
+            // 旧渲染器没有输入采样 API，仅在回退路径保留等价的宿主限频。
+            if (_inputSamplingRate == 0)
+            {
+                return true;
+            }
+
+            long currentTicks = DateTime.UtcNow.Ticks;
+            long intervalTicks = TimeSpan.FromSeconds(1.0 / _inputSamplingRate).Ticks;
+            if (currentTicks - _lastLegacyMoveTicks < intervalTicks)
+            {
+                return false;
+            }
+
+            _lastLegacyMoveTicks = currentTicks;
+            return true;
         }
 
         public void EmitUp(bool touchLike)
