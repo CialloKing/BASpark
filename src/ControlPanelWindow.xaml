@@ -522,11 +522,11 @@
 
                                                     <CheckBox Name="CheckLinkedAnimationSpeed" Content="拖尾与点击使用同一动画速度" Style="{StaticResource ToggleSwitch}" Margin="0,0,0,4"
                                                               Checked="LinkedAnimationSpeed_Changed" Unchecked="LinkedAnimationSpeed_Changed"/>
-                                                    <TextBlock x:Name="TxtLinkedSpeedHint" Text="关闭此项后可单独加快或减慢拖尾衰减与移动粒子，而不影响点击波纹与爆发粒子，与下方「拖尾刷新率」不同。" FontSize="11" Foreground="#999" Margin="0,0,0,10" TextWrapping="Wrap"/>
+                                                    <TextBlock x:Name="TxtLinkedSpeedHint" Text="关闭此项后可单独加快或减慢拖尾衰减与移动粒子，而不影响点击波纹与爆发粒子，与下方「输入采样率上限」不同。" FontSize="11" Foreground="#999" Margin="0,0,0,10" TextWrapping="Wrap"/>
 
                                                     <CheckBox Name="CheckApplyCurveDraw" Content="采用曲线拖尾" Style="{StaticResource ToggleSwitch}" Margin="0,0,0,4"
                                                               Checked="CurveDraw_Changed" Unchecked="CurveDraw_Changed"/>
-                                                    <TextBlock x:Name="TxtCurveDrawHint" Text="建议在60Hz及以上刷新率开启" FontSize="11" Foreground="#999" Margin="0,0,0,10" TextWrapping="Wrap"/>
+                                                    <TextBlock x:Name="TxtCurveDrawHint" Text="输入采样率为 60 Hz 及以上时建议开启" FontSize="11" Foreground="#999" Margin="0,0,0,10" TextWrapping="Wrap"/>
 
                                                     <StackPanel Name="PanelUnifiedAnimationSpeed" Margin="0,0,0,15">
                                                         <DockPanel LastChildFill="False">
