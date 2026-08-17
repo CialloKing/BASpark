@@ -109,10 +109,13 @@ test('inline resources cannot terminate their script element early', () =>
   assert.equal(vendor.includes('sourceMappingURL'), false);
 });
 
-test('renderer template contains one deterministic injection marker', () =>
+test('renderer template contains one host before its injection marker', () =>
 {
   const template = readFileSync(templatePath, 'utf8');
+  const host = 'id="baspark-fx-host"';
   const marker = '<!-- BASPARK_RENDERER_SCRIPTS -->';
 
+  assert.equal(template.split(host).length - 1, 1);
   assert.equal(template.split(marker).length - 1, 1);
+  assert.ok(template.indexOf(host) < template.indexOf(marker));
 });
